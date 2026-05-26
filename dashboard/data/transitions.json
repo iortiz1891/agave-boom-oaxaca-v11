@@ -1,0 +1,68 @@
+{
+  "schema": {
+    "description": "Share of new agave hectares (2015-2025) by prior land cover class, per region.",
+    "synthetic": true,
+    "classes": [
+      "forest",
+      "secondary_veg",
+      "milpa",
+      "bare"
+    ]
+  },
+  "regions": {
+    "canada": {
+      "forest": 0.06,
+      "secondary_veg": 0.28,
+      "milpa": 0.5,
+      "bare": 0.16
+    },
+    "costa": {
+      "forest": 0.12,
+      "secondary_veg": 0.36,
+      "milpa": 0.34,
+      "bare": 0.18
+    },
+    "istmo": {
+      "forest": 0.08,
+      "secondary_veg": 0.3,
+      "milpa": 0.42,
+      "bare": 0.2
+    },
+    "mixteca": {
+      "forest": 0.1,
+      "secondary_veg": 0.35,
+      "milpa": 0.4,
+      "bare": 0.15
+    },
+    "papaloapan": {
+      "forest": 0.14,
+      "secondary_veg": 0.4,
+      "milpa": 0.32,
+      "bare": 0.14
+    },
+    "sierra_norte": {
+      "forest": 0.18,
+      "secondary_veg": 0.42,
+      "milpa": 0.28,
+      "bare": 0.12
+    },
+    "sierra_sur": {
+      "forest": 0.18,
+      "secondary_veg": 0.42,
+      "milpa": 0.28,
+      "bare": 0.12
+    },
+    "valles_centrales": {
+      "forest": 0.04,
+      "secondary_veg": 0.2,
+      "milpa": 0.62,
+      "bare": 0.14
+    }
+  },
+  "state_mean": {
+    "forest": 0.112,
+    "secondary_veg": 0.341,
+    "milpa": 0.395,
+    "bare": 0.151
+  }
+}

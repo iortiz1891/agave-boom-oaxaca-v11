@@ -7,12 +7,9 @@ three core mezcal-producing INEGI districts of Oaxaca (Tlacolula,
 Yautepec, Miahuatlán; **69 municipios, ~11,850 km²**).
 
 This repository is the production-ready snapshot of the v11 classifier,
-its training panel, the validated 2017–2025 annual masks, the interactive
-dashboard, and the LaTeX manuscript. It accompanies the paper *Decadal
-mapping of agave cultivation across the three core mezcal-producing
-districts of Oaxaca (2017–2025) using AlphaEarth Foundations embeddings,
-terrain stacks, and a histogram-gradient-boosting classifier with a
-data-driven decision threshold* (Ortiz, in preparation).
+its training panel, the validated 2017–2025 annual masks, and the
+interactive dashboard. The accompanying manuscript (Ortiz, in
+preparation) is maintained in a separate repository.
 
 ## Headline numbers (v11, threshold τ = 0.60)
 
@@ -48,7 +45,7 @@ The full per-year area table with 95 % bootstrap CIs lives in
   is in `data/reference/v11_aoi_munis.csv`. Predictions outside the union
   are masked to zero.
 - **Outputs**: per-year 10 m binary masks + posterior-probability rasters
-  for 2017–2025, plus aggregated tables for the dashboard and paper.
+  for 2017–2025, plus aggregated tables for the dashboard.
 
 Compute runs on GitHub Actions free-tier matrix workflows (one runner per
 year). The trained classifier weights, AlphaEarth shards, and per-year
@@ -99,12 +96,6 @@ agave-boom-oaxaca-v11/
 │   ├── DATA_INVENTORY.md
 │   ├── REFERENCE_SAMPLING.md
 │   └── literature_review.md
-│
-├── paper/
-│   ├── main.tex                  # Manuscript (LaTeX, natbib)
-│   ├── main_v11.pdf              # Compiled PDF
-│   └── figures/                  # fig6–fig9 (confusion, boom intervals,
-│                                 #   replaced covers, per-year LC change)
 │
 ├── dashboard/
 │   ├── index.html                # Leaflet dashboard (v11-only)
@@ -168,13 +159,6 @@ across the four-region bounding box, and uploads predictions back to
 GCS under `predictions_ae_v10/`. v11 then masks these to the 69-muni
 AOI via `tools/render_v11.py`.
 
-### 6 — Compile the paper
-
-```bash
-cd paper
-pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
-```
-
 ## Reproducibility
 
 - **Code**: pinned in `environment.yml` and `requirements.txt`.
@@ -198,8 +182,8 @@ pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 | Annual rendered overlays | `dashboard/data/pixels_v11_*.png` (this repo) |
 | Per-year ha + CIs | `dashboard/data/state_totals_v11.csv` (this repo) |
 
-A Zenodo DOI will be issued at the time of paper acceptance; the
-placeholder is in `CITATION.cff`.
+A Zenodo DOI will be issued at the time of release; the placeholder is
+in `CITATION.cff`.
 
 ## Licensing
 

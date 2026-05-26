@@ -1,0 +1,300 @@
+{
+ "type": "FeatureCollection",
+ "name": "oaxaca_regions_synthetic",
+ "crs": {
+  "type": "name",
+  "properties": {
+   "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+  }
+ },
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "canada",
+    "name_es": "Ca\u00f1ada",
+    "area_km2": 7412.6,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -97.5,
+       17.5
+      ],
+      [
+       -96.6,
+       17.5
+      ],
+      [
+       -96.6,
+       18.200000000000003
+      ],
+      [
+       -97.5,
+       18.200000000000003
+      ],
+      [
+       -97.5,
+       17.5
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "costa",
+    "name_es": "Costa",
+    "area_km2": 13177.9,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -98.1,
+       15.750000000000002
+      ],
+      [
+       -96.5,
+       15.750000000000002
+      ],
+      [
+       -96.5,
+       16.450000000000003
+      ],
+      [
+       -98.1,
+       16.450000000000003
+      ],
+      [
+       -98.1,
+       15.750000000000002
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "istmo",
+    "name_es": "Istmo",
+    "area_km2": 14825.2,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -95.5,
+       16.150000000000002
+      ],
+      [
+       -94.1,
+       16.150000000000002
+      ],
+      [
+       -94.1,
+       17.05
+      ],
+      [
+       -95.5,
+       17.05
+      ],
+      [
+       -95.5,
+       16.150000000000002
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "mixteca",
+    "name_es": "Mixteca",
+    "area_km2": 14119.2,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -98.25,
+       16.85
+      ],
+      [
+       -97.05000000000001,
+       16.85
+      ],
+      [
+       -97.05000000000001,
+       17.85
+      ],
+      [
+       -98.25,
+       17.85
+      ],
+      [
+       -98.25,
+       16.85
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "papaloapan",
+    "name_es": "Papaloapan",
+    "area_km2": 8236.2,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -96.6,
+       17.75
+      ],
+      [
+       -95.6,
+       17.75
+      ],
+      [
+       -95.6,
+       18.450000000000003
+      ],
+      [
+       -96.6,
+       18.450000000000003
+      ],
+      [
+       -96.6,
+       17.75
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "sierra_norte",
+    "name_es": "Sierra Norte",
+    "area_km2": 6353.6,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -96.75,
+       17.15
+      ],
+      [
+       -95.85,
+       17.15
+      ],
+      [
+       -95.85,
+       17.75
+      ],
+      [
+       -96.75,
+       17.75
+      ],
+      [
+       -96.75,
+       17.15
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "sierra_sur",
+    "name_es": "Sierra Sur",
+    "area_km2": 9059.8,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -97.2,
+       16.099999999999998
+      ],
+      [
+       -96.10000000000001,
+       16.099999999999998
+      ],
+      [
+       -96.10000000000001,
+       16.8
+      ],
+      [
+       -97.2,
+       16.8
+      ],
+      [
+       -97.2,
+       16.099999999999998
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "region": "valles_centrales",
+    "name_es": "Valles Centrales",
+    "area_km2": 6353.6,
+    "synthetic": true
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -97.10000000000001,
+       16.7
+      ],
+      [
+       -96.2,
+       16.7
+      ],
+      [
+       -96.2,
+       17.3
+      ],
+      [
+       -97.10000000000001,
+       17.3
+      ],
+      [
+       -97.10000000000001,
+       16.7
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}
