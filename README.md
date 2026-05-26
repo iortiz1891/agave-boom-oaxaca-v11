@@ -94,8 +94,7 @@ agave-boom-oaxaca-v11/
 │   ├── datasheet_reference_v11.md  # Dataset datasheet (Gebru et al. 2021)
 │   ├── METHODS.md                # Pipeline architecture and design choices
 │   ├── DATA_INVENTORY.md
-│   ├── REFERENCE_SAMPLING.md
-│   └── literature_review.md
+│   └── REFERENCE_SAMPLING.md
 │
 ├── dashboard/
 │   ├── index.html                # Leaflet dashboard (v11-only)
