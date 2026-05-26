@@ -1,0 +1,342 @@
+name: Pipeline v10 (data-driven thr=0.60 + expanded 4-region AOI)
+
+# v10 = v9 model (HGB + 4849 labels, training_5000.csv) re-applied with two
+# changes:
+#   (1) Data-driven decision threshold 0.60 (from the per-year F1 sweep of
+#       v9 test predictions, see tools/threshold_sweep_v10.py — global
+#       optimum, marginal but defensible vs the v8/v9 default of 0.75).
+#   (2) Expanded AOI bbox covering the FULL extent of the four INEGI
+#       biocultural regions (valles_centrales, sierra_norte, sierra_sur,
+#       costa) — 408 munis, ~505 × 334 km, ~8.2× the v9 AOI area.
+#       Bbox = (-98.5526, 15.6572, -94.0002, 18.6693). All AlphaEarth shards
+#       for this footprint already exist in GCS (statewide v2 export, 204
+#       shards × 9 years).
+#
+# Inputs (unchanged from v9):
+#   reference_points_v9.csv  (4,849 labels, 80/20 stratified by class × year)
+#
+# Pipeline matches v9 exactly otherwise:
+#   - HistGradientBoosting classifier
+#   - 64-dim AlphaEarth + 5-band terrain
+#   - --no-prefetch sampling via /vsigs/
+# Outputs suffixed _v10 to keep v9 intact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Years for predict + render"
+        required: false
+        default: "2017,2018,2019,2020,2021,2022,2023,2024,2025"
+      threshold:
+        description: "Probability threshold (binary mask)"
+        required: false
+        default: "0.60"
+      target_res_deg:
+        description: "Render pixel size in degrees"
+        required: false
+        default: "0.00018"
+      aoi_bbox:
+        description: "WGS84 west,south,east,north (predict + render frame)"
+        required: false
+        default: "-98.5526,15.6572,-94.0002,18.6693"
+      color:
+        description: "Hex color for agave pixels (no #)"
+        required: false
+        default: "E91E63"
+      prob_colormap:
+        description: "Probability gradient"
+        required: false
+        default: "traffic"
+        type: choice
+        options: ["traffic", "magenta"]
+      run_train:
+        description: "Run training"
+        required: false
+        default: "yes"
+        type: choice
+        options: ["yes", "no"]
+      run_predict:
+        description: "Run predict"
+        required: false
+        default: "yes"
+        type: choice
+        options: ["yes", "no"]
+
+env:
+  V_SUFFIX: "_v10"
+
+jobs:
+  train_v10:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_train != 'no' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-py311-v10-${{ hashFiles('requirements.txt') }}-r1
+          restore-keys: pip-py311-v10-
+
+      - name: Install OS-level geo deps
+        run: sudo apt-get update -y && sudo apt-get install -y libgdal-dev gdal-bin libspatialindex-dev
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install earthengine-api google-cloud-storage geopandas rasterio shapely pyproj \
+                      pandas numpy scipy scikit-learn joblib pyyaml
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set env
+        run: |
+          mkdir -p ~/.config/gee
+          printf '%s' '${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}' > ~/.config/gee/ee-sa.json
+          chmod 600 ~/.config/gee/ee-sa.json
+          echo "GEE_SERVICE_ACCOUNT_KEY=$HOME/.config/gee/ee-sa.json" >> $GITHUB_ENV
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gee/ee-sa.json" >> $GITHUB_ENV
+          echo "PYTHONPATH=." >> $GITHUB_ENV
+
+      - name: Train v10 model
+        run: |
+          mkdir -p data/reference data/processed reports data/interim/train_ae_v10
+          gsutil cp "gs://${{ secrets.GCS_BUCKET }}/reference/reference_points_v9.csv" \
+            data/reference/reference_points_v9.csv
+          PYTHONPATH=. python -m src.models.train_alphaearth \
+            --ref data/reference/reference_points_v9.csv \
+            --bucket "${{ secrets.GCS_BUCKET }}" \
+            --out-model data/processed/model_rf_alphaearth_v10.joblib \
+            --out-report reports/training_report_alphaearth_v10.md \
+            --tmp-dir data/interim/train_ae_v10 \
+            --clf hgb \
+            --sample-workers 1 \
+            --no-prefetch \
+            --extra-features elevation,slope,northness,eastness,tri \
+            --force
+          gsutil cp data/processed/model_rf_alphaearth_v10.joblib \
+            "gs://${{ secrets.GCS_BUCKET }}/models/model_rf_alphaearth_v10.joblib"
+          gsutil cp reports/training_report_alphaearth_v10.md \
+            "gs://${{ secrets.GCS_BUCKET }}/reports/training_report_alphaearth_v10.md"
+          echo "=== TRAINING REPORT ==="
+          cat reports/training_report_alphaearth_v10.md
+
+  setup_years:
+    runs-on: ubuntu-latest
+    if: ${{ always() && (needs.train_v10.result == 'success' || github.event.inputs.run_train == 'no') }}
+    needs: train_v10
+    outputs:
+      years: ${{ steps.parse.outputs.years }}
+    steps:
+      - id: parse
+        run: |
+          IFS=',' read -ra Y <<< "${{ inputs.years }}"
+          JSON="["
+          for y in "${Y[@]}"; do
+            y_trim=$(echo "$y" | xargs)
+            JSON+="\"$y_trim\","
+          done
+          JSON="${JSON%,}]"
+          echo "years=$JSON" >> "$GITHUB_OUTPUT"
+
+  predict_v10:
+    needs: setup_years
+    if: ${{ always() && needs.setup_years.result == 'success' && github.event.inputs.run_predict != 'no' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        year: ${{ fromJSON(needs.setup_years.outputs.years) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-py311-v10-${{ hashFiles('requirements.txt') }}-r1
+          restore-keys: pip-py311-v10-
+
+      - name: Cache AlphaEarth shards (predict ${{ matrix.year }})
+        uses: actions/cache@v4
+        with:
+          path: data/interim/predict_ae_v10/_in_cache
+          key: ae-shards-predict-v10-${{ matrix.year }}
+          restore-keys: ae-shards-predict-v10-
+
+      - name: Install OS-level geo deps
+        run: sudo apt-get update -y && sudo apt-get install -y libgdal-dev gdal-bin libspatialindex-dev
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install google-cloud-storage rasterio shapely pyproj scikit-learn joblib numpy
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set env
+        run: |
+          mkdir -p ~/.config/gee
+          printf '%s' '${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}' > ~/.config/gee/ee-sa.json
+          chmod 600 ~/.config/gee/ee-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gee/ee-sa.json" >> $GITHUB_ENV
+
+      - name: Predict ${{ matrix.year }} (v10, AOI-filtered)
+        env:
+          CPL_VSIL_CURL_CACHE_SIZE: "2000000000"
+          VSI_CACHE: "TRUE"
+          VSI_CACHE_SIZE: "1000000000"
+          GDAL_HTTP_MAX_RETRY: "5"
+          GDAL_HTTP_RETRY_DELAY: "2"
+        run: |
+          mkdir -p data/processed data/interim/predict_ae_v10
+          gsutil cp "gs://${{ secrets.GCS_BUCKET }}/models/model_rf_alphaearth_v10.joblib" \
+            data/processed/model_rf_alphaearth_v10.joblib
+          # No --shard-cache-dir (would OOM on 4-region AOI) and no --force
+          # so re-triggers only do missing shards. Bumped to 8 threads for
+          # throughput (max disk = 8 × ~200 MB = 1.6 GB, well under runner cap).
+          PYTHONPATH=. python -W ignore -u -m src.models.predict_alphaearth \
+            --year ${{ matrix.year }} \
+            --bucket "${{ secrets.GCS_BUCKET }}" \
+            --model data/processed/model_rf_alphaearth_v10.joblib \
+            --out-prefix "predictions_ae_v10/agave_mask_ae_" \
+            --tmp-dir data/interim/predict_ae_v10 \
+            --threads 8 \
+            --aoi-bbox="${{ inputs.aoi_bbox }}" \
+            --terrain-uri "/vsigs/${{ secrets.GCS_BUCKET }}/dem/terrain_5band.tif"
+
+  render_v10:
+    needs: [setup_years, predict_v10]
+    if: ${{ always() && needs.setup_years.result == 'success' && (needs.predict_v10.result == 'success' || github.event.inputs.run_predict == 'no') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        year: ${{ fromJSON(needs.setup_years.outputs.years) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-py311-v10-${{ hashFiles('requirements.txt') }}-r1
+          restore-keys: pip-py311-v10-
+
+      - name: Install OS-level geo deps
+        run: sudo apt-get update -y && sudo apt-get install -y libgdal-dev gdal-bin
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install google-cloud-storage rasterio Pillow numpy
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set env
+        run: |
+          mkdir -p ~/.config/gee
+          printf '%s' '${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}' > ~/.config/gee/ee-sa.json
+          chmod 600 ~/.config/gee/ee-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gee/ee-sa.json" >> $GITHUB_ENV
+
+      - name: Render ${{ matrix.year }} (v10, thr=${{ inputs.threshold }}, ${{ inputs.prob_colormap }})
+        env:
+          CPL_VSIL_CURL_CACHE_SIZE: "2000000000"
+          VSI_CACHE: "TRUE"
+          VSI_CACHE_SIZE: "1000000000"
+        run: |
+          mkdir -p dashboard/data
+          PYTHONPATH=. python -W ignore -u -m src.viz.render_overlay_noxgdal \
+            --bucket "${{ secrets.GCS_BUCKET }}" \
+            --year ${{ matrix.year }} \
+            --pred-prefix "predictions_ae_v10/agave_mask_ae_" \
+            --prob-threshold "${{ inputs.threshold }}" \
+            --agave-rgb "${{ inputs.color }}" \
+            --alpha 230 \
+            --target-res-deg "${{ inputs.target_res_deg }}" \
+            --bounds="${{ inputs.aoi_bbox }}" \
+            --prob-colormap "${{ inputs.prob_colormap }}" \
+            --dashboard-data dashboard/data
+          mv "dashboard/data/pixels_${{ matrix.year }}.png"      "dashboard/data/pixels_v10_${{ matrix.year }}.png"
+          mv "dashboard/data/pixels_prob_${{ matrix.year }}.png" "dashboard/data/pixels_v10_prob_${{ matrix.year }}.png"
+          mv "dashboard/data/pixels_${{ matrix.year }}.json"     "dashboard/data/pixels_v10_${{ matrix.year }}.json"
+
+      - name: Upload to GCS overlays_v10/
+        run: |
+          gsutil cp "dashboard/data/pixels_v10_${{ matrix.year }}.png"      "gs://${{ secrets.GCS_BUCKET }}/overlays_v10/pixels_v10_${{ matrix.year }}.png"
+          gsutil cp "dashboard/data/pixels_v10_prob_${{ matrix.year }}.png" "gs://${{ secrets.GCS_BUCKET }}/overlays_v10/pixels_v10_prob_${{ matrix.year }}.png"
+          gsutil cp "dashboard/data/pixels_v10_${{ matrix.year }}.json"     "gs://${{ secrets.GCS_BUCKET }}/overlays_v10/pixels_v10_${{ matrix.year }}.json"
+
+  summary_v10:
+    needs: render_v10
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install Pillow numpy
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Download v10 PNGs + compute state_totals_v10
+        run: |
+          mkdir -p dashboard/data
+          gsutil -m cp "gs://${{ secrets.GCS_BUCKET }}/overlays_v10/pixels_v10_*" dashboard/data/ || true
+          for f in dashboard/data/pixels_v10_20*.png; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" .png); year=${base##*_}
+            cp "$f" "dashboard/data/pixels_${year}.png"
+          done
+          if ls dashboard/data/pixels_2*.png > /dev/null 2>&1; then
+            python tools/state_totals_from_pixels.py
+            mv dashboard/data/state_totals.csv dashboard/data/state_totals_v10.csv
+            cat dashboard/data/state_totals_v10.csv
+            gsutil cp dashboard/data/state_totals_v10.csv "gs://${{ secrets.GCS_BUCKET }}/overlays_v10/state_totals_v10.csv"
+          fi

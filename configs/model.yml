@@ -1,0 +1,53 @@
+# Default model configuration. Override in run scripts.
+
+classes:
+  - id: 0
+    name: not_agave
+  - id: 1
+    name: agave_mature
+  - id: 2
+    name: agave_young
+
+# Auxiliary classes for reference labelling (collapsed to {0,1,2} for the binary detector at training time)
+reference_classes:
+  - milpa_or_annual
+  - forest
+  - secondary_veg
+  - bare_or_urban
+  - water
+  - other_perennial
+
+baseline:
+  algorithm: random_forest
+  n_estimators: 500
+  max_depth: 25
+  min_samples_leaf: 5
+  class_weight: balanced
+  n_jobs: -1
+  random_state_ref: configs/seed.yml#master_seed
+
+advanced:
+  algorithm: temp_cnn
+  arch: TempCNN
+  in_channels: 10           # S2 bands: B2,B3,B4,B5,B6,B7,B8,B8A,B11,B12
+  in_timesteps: 12
+  hidden_channels: 64
+  dropout: 0.2
+  optimizer: adamw
+  lr: 1e-3
+  weight_decay: 1e-4
+  batch_size: 256
+  epochs: 60
+  early_stopping_patience: 10
+
+post_processing:
+  hmm:
+    transition_prior: configs/hmm_transitions.yml
+  morphology:
+    min_polygon_area_m2: 400   # 4 pixels at 10 m
+    sieve: true
+
+evaluation:
+  protocol: olofsson_2014
+  n_test_points: 1000
+  ci_level: 0.95

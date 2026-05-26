@@ -1,0 +1,76 @@
+name: agave-oaxaca
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  # Geospatial core
+  - geopandas>=0.14
+  - rasterio>=1.3
+  - rioxarray>=0.15
+  - xarray>=2024.1
+  - shapely>=2.0
+  - pyproj>=3.6
+  - fiona>=1.9
+  - cartopy>=0.22
+  - contextily>=1.5
+  - pyogrio
+  - dask
+  - zarr
+  - netCDF4
+  - h5py
+  # Earth Engine + Planet
+  - earthengine-api>=0.1.380
+  - geemap>=0.30
+  - planet>=2.6
+  # Spatial statistics
+  - pysal>=24.1
+  - libpysal
+  - esda
+  - splot
+  - pymannkendall
+  - statsmodels
+  # ML
+  - scikit-learn>=1.4
+  - xgboost
+  - lightgbm
+  - imbalanced-learn
+  - scikit-image
+  # I/O & utils
+  - pandas>=2.2
+  - numpy>=1.26
+  - scipy>=1.12
+  - pyarrow
+  - fastparquet
+  - tqdm
+  - pyyaml
+  - python-dotenv
+  - jupyterlab
+  - jupytext
+  - ipywidgets
+  - pip
+  # Viz
+  - matplotlib>=3.8
+  - seaborn>=0.13
+  - plotly
+  - folium
+  - branca
+  # Testing
+  - pytest
+  - pytest-cov
+  # Documentation / paper
+  - pandoc
+  - pip:
+      - snakemake
+      - dvc
+      - sentinelsat
+      - pystac-client
+      - stackstac
+      - odc-stac
+      - rio-cogeo
+      - sentinelhub
+      - eemont
+      - wxee
+      - segmentation-models-pytorch
+      - torch
+      - torchvision

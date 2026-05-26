@@ -1,0 +1,1579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Agave Boom Oaxaca — Dashboard</title>
+
+<!-- CSS reset -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize@2.0.0/modern-normalize.min.css">
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --border: #e6e8ec;
+    --text: #1f2328;
+    --text-muted: #6a737d;
+    --accent: #2f6b3a;
+    --accent-2: #c08c2c;
+    --warn-bg: #fff7e0;
+    --warn-bd: #f0c674;
+    --warn-tx: #6b4d10;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.04);
+    --header-h: 56px;
+    --warn-h: 34px;
+    --footer-h: 320px;
+    --side-l: 280px;
+    --side-r: 320px;
+    --radius: 6px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  button { font-family: inherit; }
+  /* Layout: warn banner + header + grid */
+  .app {
+    display: grid;
+    grid-template-rows: var(--warn-h) var(--header-h) 1fr var(--footer-h);
+    grid-template-columns: var(--side-l) 1fr var(--side-r);
+    grid-template-areas:
+      "warn   warn   warn"
+      "header header header"
+      "filters map    details"
+      "footer footer footer";
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+  .warn {
+    grid-area: warn;
+    background: var(--warn-bg);
+    border-bottom: 1px solid var(--warn-bd);
+    color: var(--warn-tx);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; gap: 10px;
+    padding: 0 14px;
+  }
+  .warn .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #c97a14; box-shadow: 0 0 0 0 rgba(201,122,20,0.6);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(201,122,20,0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(201,122,20,0); }
+    100% { box-shadow: 0 0 0 0 rgba(201,122,20,0); }
+  }
+
+  header.topbar {
+    grid-area: header;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 18px; gap: 16px;
+  }
+  header.topbar .title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  header.topbar .subtitle { font-size: 11px; color: var(--text-muted); }
+  header.topbar .meta {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 14px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .pill {
+    background: #eef2ee; color: var(--accent); padding: 2px 8px;
+    border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+  .lang-toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .lang-toggle button {
+    background: var(--panel); border: 0; padding: 4px 8px; font-size: 11px;
+    cursor: pointer; color: var(--text-muted);
+  }
+  .lang-toggle button.on { background: var(--accent); color: #fff; }
+  .gh-link {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 4px; color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .gh-link:hover { color: var(--text); background: #f0f1f3; }
+
+  /* Live indicator flash */
+  #live-badge.flash { animation: live-flash 1.2s ease-out 1; }
+  @keyframes live-flash {
+    0%, 100% { color: #2f6b3a; }
+    30%      { color: #c08c2c; transform: scale(1.15); }
+  }
+
+  /* Tab navigation */
+  .tabs {
+    display: inline-flex; gap: 4px; margin-left: 24px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: #fafbfc; padding: 2px;
+  }
+  .tabs button {
+    border: 0; background: transparent; padding: 5px 14px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; border-radius: 4px;
+  }
+  .tabs button.on { background: var(--accent); color: #fff; }
+  .tabs button:hover:not(.on) { background: #eef2ee; color: var(--text); }
+
+  /* Results iframe view */
+  #view-results {
+    display: none; position: fixed; left: 0; right: 0;
+    top: calc(var(--warn-h) + var(--header-h));
+    bottom: 0; background: var(--bg);
+    z-index: 50;
+  }
+  #view-results iframe {
+    width: 100%; height: 100%; border: 0;
+  }
+  body.results-mode .app > *:not(.warn):not(.topbar) { display: none !important; }
+  body.results-mode #view-results { display: block; }
+
+  aside.filters {
+    grid-area: filters;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 14px 14px 16px;
+  }
+  aside.details {
+    grid-area: details;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 14px 14px 16px;
+  }
+  main.map { grid-area: map; position: relative; }
+  #map { width: 100%; height: 100%; background: #eef1f4; }
+  footer.trend {
+    grid-area: footer;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 14px 24px 16px;
+    display: grid; grid-template-columns: 1fr 280px; gap: 24px; align-items: stretch;
+  }
+  /* Constrain the chart so it isn't a thin horizontal strip — paper-quality: */
+  footer.trend .chart-wrap {
+    max-width: 820px; justify-self: center; width: 100%;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px 16px 8px;
+  }
+  footer.trend .chart-wrap h4 {
+    margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #1f2328;
+    text-align: center; letter-spacing: 0.01em;
+  }
+  footer.trend .chart-canvas-wrap {
+    height: 240px; position: relative;
+  }
+  .section-h {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin: 14px 0 6px; font-weight: 600;
+  }
+  .section-h:first-child { margin-top: 0; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .field label { font-size: 11px; color: var(--text-muted); }
+  .field input[type=text],
+  .field select {
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 5px 7px; background: #fff; font-size: 12px; color: var(--text);
+  }
+  .year-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .year-display {
+    font-family: var(--mono); font-size: 18px; font-weight: 700;
+    min-width: 56px; color: var(--accent);
+  }
+  .play-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--border); background: #fff; cursor: pointer;
+    color: var(--accent); display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .play-btn:hover { background: #f3f4f6; }
+  input[type=range] { width: 100%; }
+  .region-list {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .region-chip {
+    padding: 3px 8px; border-radius: 12px; border: 1px solid var(--border);
+    background: #fff; font-size: 11px; cursor: pointer; color: var(--text-muted);
+    user-select: none;
+  }
+  .region-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .muni-search-wrap { position: relative; }
+  .muni-list {
+    list-style: none; margin: 4px 0 0; padding: 0;
+    border: 1px solid var(--border); border-radius: 4px; background: #fff;
+    max-height: 180px; overflow-y: auto; font-size: 12px;
+  }
+  .muni-list li {
+    padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f1f2f4;
+  }
+  .muni-list li:last-child { border-bottom: 0; }
+  .muni-list li:hover { background: #f5f7f5; }
+  .muni-list li.sel { background: var(--accent); color: #fff; }
+  .dl-row { display: flex; flex-direction: column; gap: 6px; }
+  .dl-btn {
+    border: 1px solid var(--border); background: #fff; padding: 6px 8px;
+    border-radius: 4px; cursor: pointer; font-size: 12px; text-align: left;
+    color: var(--text); display: flex; align-items: center; justify-content: space-between;
+  }
+  .dl-btn:hover { background: #f5f7f5; border-color: var(--accent); }
+  .dl-btn .hint { font-size: 10px; color: var(--text-muted); }
+  .check-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+
+  /* Right panel */
+  .panel-h {
+    font-size: 14px; font-weight: 700; margin: 0 0 4px;
+  }
+  .panel-sub { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+  .kpi-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .kpi {
+    background: #fafbfc; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 10px;
+  }
+  .kpi .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .kpi .value { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 2px; }
+  .kpi .delta { font-size: 11px; }
+  .delta.up { color: #1f7a3a; }
+  .delta.dn { color: #b13838; }
+  .top5 {
+    margin: 0; padding: 0; list-style: none;
+  }
+  .top5 li {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    border-bottom: 1px solid #f1f2f4; font-size: 12px;
+  }
+  .top5 li:last-child { border: 0; }
+  .top5 .v { font-family: var(--mono); color: var(--accent); }
+  .chart-wrap {
+    background: #fafbfc; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 6px 8px 4px; margin-bottom: 10px;
+  }
+  .chart-wrap h4 {
+    margin: 0 0 4px; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+  }
+  .chart-canvas-wrap {
+    position: relative; height: 130px;
+  }
+  footer.trend .chart-canvas-wrap { height: calc(var(--footer-h) - 60px); }
+  .footer-info { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--text-muted);
+    border-left: 1px solid var(--border); padding-left: 14px; }
+  .footer-info .v { font-family: var(--mono); color: var(--text); font-size: 13px; }
+
+  .legend {
+    position: absolute; bottom: 12px; right: 12px; z-index: 500;
+    background: rgba(255,255,255,0.95); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 8px; font-size: 11px;
+    box-shadow: var(--shadow);
+  }
+  .legend .ramp {
+    display: flex; height: 8px; width: 180px; border-radius: 2px; overflow: hidden;
+    margin-top: 3px;
+  }
+  .legend .ramp span { flex: 1; }
+  .legend .scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .legend .title { font-weight: 600; color: var(--text); font-size: 11px; }
+
+  .tooltip-card {
+    font-size: 12px; font-family: system-ui;
+  }
+  .tooltip-card b { font-size: 12px; }
+  .tooltip-card .val { font-family: var(--mono); color: var(--accent); }
+
+  .empty {
+    color: var(--text-muted); font-size: 12px; padding: 12px 4px;
+  }
+  .row-flex { display: flex; align-items: center; justify-content: space-between; }
+  .data-row-link {
+    display: inline-block; margin-top: 4px; font-size: 11px; color: var(--accent);
+    border-bottom: 1px dashed var(--accent);
+  }
+
+  /* Responsive: collapse to 1280×800 still works; below shrink right panel */
+  @media (max-width: 1280px) {
+    :root { --side-l: 250px; --side-r: 280px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="warn" role="status" aria-live="polite" id="data-banner" style="display:none">
+    <span class="pulse" aria-hidden="true"></span>
+    <span data-i18n="demo_banner">Datos preliminares · cobertura parcial · re-cálculo al completarse las predicciones.</span>
+  </div>
+
+  <header class="topbar">
+    <div>
+      <div class="title" data-i18n="title">Agave Boom in Oaxaca — Dashboard</div>
+      <div class="subtitle" data-i18n="subtitle">DO Mezcal annual area, 2015–2025 · 10 m Sentinel-2 + Landsat (planned)</div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button id="tab-map" class="on" role="tab" aria-selected="true">Map</button>
+      <button id="tab-results" role="tab" aria-selected="false">Model Results</button>
+    </nav>
+    <div class="meta">
+      <span class="pill" id="version-pill">v…</span>
+      <span id="live-badge" title="Auto-refresh every 20s" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#2f6b3a;font-weight:600;">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#2f6b3a;"></span>LIVE
+      </span>
+      <span><span data-i18n="updated">Updated</span>: <span id="updated-date">…</span></span>
+      <div class="lang-toggle" role="group" aria-label="Language">
+        <button id="lang-en" class="on">EN</button>
+        <button id="lang-es">ES</button>
+      </div>
+      <a class="gh-link" id="gh-link" href="#" title="GitHub repository (placeholder)" aria-label="GitHub">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <aside class="filters" aria-label="Filters">
+    <div class="section-h" data-i18n="year">Year</div>
+    <div class="year-row">
+      <button class="play-btn" id="play-btn" title="Play / pause animation" aria-label="Play">▶</button>
+      <span class="year-display" id="year-display">2025</span>
+      <select id="play-speed" style="margin-left:8px;font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:4px;background:#fff;color:var(--text);" title="Animation speed">
+        <option value="1500">slow</option>
+        <option value="800" selected>medium</option>
+        <option value="350">fast</option>
+        <option value="150">very fast</option>
+      </select>
+      <label style="margin-left:8px;font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;cursor:pointer;">
+        <input type="checkbox" id="play-loop" checked />loop
+      </label>
+    </div>
+    <input type="range" id="year-range" min="2017" max="2025" step="1" value="2025" />
+    <div id="year-ticks" style="display:flex;justify-content:space-between;margin-top:2px;padding:0 4px;font-size:9px;color:var(--text-muted);font-family:var(--mono);"></div>
+
+    <div class="section-h" data-i18n="regions">Regions</div>
+    <div class="region-list" id="region-list"></div>
+    <div class="check-row" style="margin-top:6px;">
+      <button class="dl-btn" id="region-all" style="padding:3px 6px;font-size:11px;">
+        <span data-i18n="all_regions">All / none</span>
+      </button>
+    </div>
+
+    <div class="section-h" data-i18n="muni_search">Municipality</div>
+    <div class="field">
+      <input type="text" id="muni-search" placeholder="Type to filter…" />
+    </div>
+    <ul class="muni-list" id="muni-list"></ul>
+
+    <div class="section-h">Paper figures</div>
+    <div id="paper-figs" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+      <a href="#" data-fig="fig2_areas_timeseries" class="paper-fig" title="Annual area timeseries vs SIAP">
+        <img src="data/figures/fig2_areas_timeseries.png" alt="Areas" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">Areas</div>
+      </a>
+      <a href="#" data-fig="fig5_metrics" class="paper-fig" title="Metrics across versions">
+        <img src="data/figures/fig5_metrics.png" alt="Metrics" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">Metrics</div>
+      </a>
+      <a href="#" data-fig="fig3_spatial_progression" class="paper-fig" title="2017/2020/2025 side-by-side">
+        <img src="data/figures/fig3_spatial_progression.png" alt="Spatial" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">Spatial</div>
+      </a>
+      <a href="#" data-fig="fig4_transitions" class="paper-fig" title="Boom heatmap (new/persistent/lost agave 2017→2025)">
+        <img src="data/figures/fig4_transitions.png" alt="Transitions" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">Boom map</div>
+      </a>
+      <a href="#" data-fig="fig6_confusion_v11" class="paper-fig" title="v11 confusion matrix (n=870, τ=0.60)">
+        <img src="data/figures/fig6_confusion_v11.png" alt="Confusion" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">v11 confusion</div>
+      </a>
+      <a href="#" data-fig="fig7_v11_boom_intervals" class="paper-fig" title="v11 boom trajectory with 95% CI + YoY expansion">
+        <img src="data/figures/fig7_v11_boom_intervals.png" alt="v11 boom" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">v11 boom + CI</div>
+      </a>
+      <a href="#" data-fig="fig8_v11_replaced_covers" class="paper-fig" title="What did the boom replace? ESA WorldCover 2020 baseline">
+        <img src="data/figures/fig8_v11_replaced_covers.png" alt="Replaced covers" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">Replaced LC</div>
+      </a>
+      <a href="#" data-fig="fig9_v11_replaced_per_year" class="paper-fig" title="Per-year LC replacement breakdown">
+        <img src="data/figures/fig9_v11_replaced_per_year.png" alt="Replaced by year" style="width:100%;border:1px solid var(--border);border-radius:3px;display:block;" />
+        <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:1px;">LC by year</div>
+      </a>
+    </div>
+
+    <div class="section-h" data-i18n="downloads">Downloads</div>
+    <div class="dl-row">
+      <button class="dl-btn" id="dl-csv">
+        <span data-i18n="dl_csv">Filtered panel CSV</span>
+        <span class="hint">.csv</span>
+      </button>
+      <button class="dl-btn" id="dl-geojson">
+        <span data-i18n="dl_geojson">Map view GeoJSON</span>
+        <span class="hint">.geojson</span>
+      </button>
+    </div>
+
+    <div class="section-h" data-i18n="layers">Layers</div>
+    <div style="margin-bottom:6px; font-size:11px; color:var(--text-muted); font-weight:600;">Model version</div>
+    <div style="display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:8px;">
+      <button id="ver-v11" class="ver-btn on" data-ver="v11" style="background:var(--accent);color:#fff;border:0;padding:4px 12px;font-size:11px;font-weight:600;cursor:default;">v11 · 3 districts · thr=0.60</button>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="toggle-pixels" checked />
+      <label for="toggle-pixels">Agave pixels (raster)</label>
+    </div>
+    <div style="margin: 4px 0 0 22px; font-size:11px;">
+      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+        <input type="radio" name="pixel-mode" id="mode-binary" value="binary" checked />
+        Binary
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;">
+        <input type="radio" name="pixel-mode" id="mode-probability" value="probability" />
+        Probability
+      </label>
+    </div>
+    <div class="check-row" style="margin-top:4px;">
+      <input type="checkbox" id="toggle-munis" />
+      <label for="toggle-munis">Municipalities</label>
+    </div>
+    <div class="check-row" style="margin-top:4px;">
+      <input type="checkbox" id="toggle-regions" />
+      <label for="toggle-regions" data-i18n="show_regions">Region outlines</label>
+    </div>
+    <div class="check-row" style="margin-top:4px;">
+      <input type="checkbox" id="toggle-mgrs" />
+      <label for="toggle-mgrs" data-i18n="mgrs">MGRS grid</label>
+    </div>
+
+    <div style="margin-top:10px; font-size:11px; color: var(--text-muted); font-weight:600;">Pixel opacity</div>
+    <input type="range" id="pixel-opacity" min="20" max="100" value="85" style="width:100%;" />
+
+    <div style="margin-top:10px; font-size:11px; color: var(--text-muted); font-weight:600;">Basemap</div>
+    <select id="basemap-select" style="width:100%; padding:4px; font-size:12px; border:1px solid var(--border); border-radius:4px;">
+      <option value="osm">OpenStreetMap</option>
+      <option value="satellite">Satellite (Esri)</option>
+      <option value="google_hybrid">Google Hybrid (sat+labels)</option>
+      <option value="google_satellite">Google Satellite</option>
+      <option value="google_roadmap">Google Roadmap</option>
+      <option value="google_terrain">Google Terrain</option>
+      <option value="terrain">Terrain (Stamen)</option>
+      <option value="light">Light gray</option>
+      <option value="dark">Dark</option>
+    </select>
+  </aside>
+
+  <main class="map">
+    <div id="map" role="region" aria-label="Choropleth map of agave area"></div>
+    <div class="legend" aria-hidden="true">
+      <div class="title"><span data-i18n="legend_title">Agave area</span> (ha) · <span id="legend-year">2025</span></div>
+      <div class="ramp" id="legend-ramp"></div>
+      <div class="scale">
+        <span id="legend-min">0</span>
+        <span id="legend-mid">…</span>
+        <span id="legend-max">…</span>
+      </div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:10px;" data-i18n="legend_note">
+        Synthetic. Click a polygon for details.
+      </div>
+    </div>
+
+    <!-- Probability colormap legend (shown only in probability mode) -->
+    <div id="prob-legend" style="position:absolute; bottom:10px; left:10px; z-index:500; background:rgba(255,255,255,0.95); padding:8px 10px; border-radius:6px; font-size:11px; box-shadow:0 1px 4px rgba(0,0,0,0.15); display:none; max-width:240px;">
+      <div style="font-weight:600; margin-bottom:4px; color:#1f2328;">P(agave)</div>
+      <div style="height:14px; border-radius:3px; background: linear-gradient(to right, #2ECC40, #FFDC00, #FF8500, #DC1400); position:relative;"></div>
+      <div style="display:flex; justify-content:space-between; margin-top:3px; color:#6a737d; font-size:10px;">
+        <span>0.40</span><span>0.60</span><span>0.80</span><span>1.00</span>
+      </div>
+      <div style="margin-top:5px; color:#6a737d; font-size:10px; line-height:1.3;">
+        Solo se muestran píxeles con P(agave) ≥ 0.40.<br>
+        Binario: P ≥ 0.60 (umbral data-driven).<br>
+        Verde = umbral; rojo = alta confianza agave.
+      </div>
+    </div>
+  </main>
+
+  <aside class="details" id="details" aria-label="Details panel">
+    <!-- populated by JS -->
+  </aside>
+
+  <footer class="trend">
+    <div class="chart-wrap" style="margin:0;">
+      <h4 data-i18n="state_trend">State-wide annual agave area · 95% CI band</h4>
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-state"></canvas>
+      </div>
+    </div>
+    <div class="footer-info">
+      <div><span data-i18n="data_src">Data source</span></div>
+      <div class="v" id="footer-version">…</div>
+      <div data-i18n="footer_note">Layers will be replaced with Olofsson-adjusted estimates from the Snakemake pipeline.</div>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+/* ============================================================
+   Agave Boom Oaxaca — Dashboard v0.1 (synthetic data, demo)
+   ============================================================ */
+
+const DATA_DIR = "data/";
+const FILES = {
+  munis:  DATA_DIR + "municipalities_real.geojson",
+  regions:DATA_DIR + "regions.geojson",
+  panel:  DATA_DIR + "agave_panel.csv",
+  state:  DATA_DIR + "state_totals.csv",
+  trans:  DATA_DIR + "transitions.json",
+  meta:   DATA_DIR + "metadata.json",
+};
+
+// ---------- I18N ----------
+const I18N = {
+  en: {
+    title: "Agave Boom in Oaxaca — Dashboard",
+    subtitle: "DO Mezcal annual area, 2015–2025 · 10 m Sentinel-2 + Landsat (planned)",
+    demo_banner: "DEMO DATA — synthetic placeholders for UX validation. Real outputs to replace files in dashboard/data/.",
+    updated: "Updated",
+    year: "Year",
+    regions: "Regions",
+    all_regions: "All / none",
+    muni_search: "Municipality",
+    downloads: "Downloads",
+    dl_csv: "Filtered panel CSV",
+    dl_geojson: "Map view GeoJSON",
+    layers: "Layers",
+    mgrs: "MGRS grid (placeholder)",
+    show_regions: "Region outlines",
+    legend_title: "Agave area",
+    legend_note: "Synthetic. Click a polygon for details.",
+    state_trend: "State-wide annual agave area · 95% CI band",
+    data_src: "Data source",
+    footer_note: "Layers will be replaced with Olofsson-adjusted estimates from the Snakemake pipeline.",
+    nothing_selected_h: "State summary",
+    nothing_selected_sub: "Click a municipality on the map to drill down.",
+    kpi_total: "Total area",
+    kpi_yoy: "YoY change",
+    kpi_top: "Top expanding municipalities",
+    muni_h: "Municipality",
+    cur_area: "Current area",
+    cagr: "CAGR 2015–2025",
+    trend: "Annual area trend",
+    transitions: "Prior LULC for new agave",
+    csv_link: "Open CSV row",
+    no_munis: "No municipalities match.",
+  },
+  es: {
+    title: "Auge del Agave en Oaxaca — Panel",
+    subtitle: "Área anual de la DO Mezcal, 2015–2025 · Sentinel-2 + Landsat 10 m (planeado)",
+    demo_banner: "DATOS DEMO — valores sintéticos para validar UX. Reemplazar archivos en dashboard/data/.",
+    updated: "Actualizado",
+    year: "Año",
+    regions: "Regiones",
+    all_regions: "Todas / ninguna",
+    muni_search: "Municipio",
+    downloads: "Descargas",
+    dl_csv: "CSV del panel filtrado",
+    dl_geojson: "GeoJSON de la vista",
+    layers: "Capas",
+    mgrs: "Cuadrícula MGRS (placeholder)",
+    show_regions: "Contornos de regiones",
+    legend_title: "Área de agave",
+    legend_note: "Sintético. Haz clic en un polígono.",
+    state_trend: "Área anual estatal · banda de IC 95%",
+    data_src: "Fuente",
+    footer_note: "Las capas se reemplazarán por estimaciones ajustadas Olofsson desde el pipeline Snakemake.",
+    nothing_selected_h: "Resumen estatal",
+    nothing_selected_sub: "Haz clic en un municipio del mapa para ver detalles.",
+    kpi_total: "Área total",
+    kpi_yoy: "Cambio anual",
+    kpi_top: "Municipios con mayor expansión",
+    muni_h: "Municipio",
+    cur_area: "Área actual",
+    cagr: "CAGR 2015–2025",
+    trend: "Tendencia anual",
+    transitions: "Cobertura previa convertida a agave",
+    csv_link: "Abrir fila CSV",
+    no_munis: "Sin coincidencias.",
+  }
+};
+let LANG = "en";
+function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const k = el.getAttribute("data-i18n");
+    el.innerHTML = t(k);
+  });
+  document.documentElement.lang = LANG;
+  if (state.selected) renderDetails(state.selected); else renderStateKPIs();
+}
+
+// ---------- Color ramp (viridis 7-stop approximation) ----------
+const VIRIDIS = ["#440154","#46327e","#365c8d","#277f8e","#1fa187","#4ac16d","#a0da39","#fde725"];
+function ramp(t) {
+  if (t <= 0) return VIRIDIS[0];
+  if (t >= 1) return VIRIDIS[VIRIDIS.length-1];
+  const x = t * (VIRIDIS.length - 1);
+  const i = Math.floor(x), f = x - i;
+  const a = hexToRgb(VIRIDIS[i]), b = hexToRgb(VIRIDIS[i+1]);
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
+}
+function hexToRgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+
+// ---------- State ----------
+const state = {
+  meta: null,
+  munis: null,        // GeoJSON FeatureCollection
+  regionsFC: null,
+  panel: null,        // [{cve_mun,year,area_ha,...}]
+  stateTotals: null,  // [{year,area_ha,...}]
+  transitions: null,
+  year: 2025,
+  selectedRegions: new Set(),
+  search: "",
+  selected: null,     // cve_mun
+  playing: false,
+  playInterval: null,
+  showMgrs: false,
+  showRegions: true,
+};
+
+// ---------- Loading ----------
+async function loadAll() {
+  const ts = Date.now();   // cache-bust on first load + reloads
+  const [meta, munis, regions, panelText, stateText, trans] = await Promise.all([
+    fetch(`${FILES.meta}?ts=${ts}`).then(r=>r.json()),
+    fetch(`${FILES.munis}?ts=${ts}`).then(r=>r.json()),
+    fetch(`${FILES.regions}?ts=${ts}`).then(r=>r.json()),
+    fetch(`${FILES.panel}?ts=${ts}`).then(r=>r.text()),
+    fetch(`${FILES.state}?ts=${ts}`).then(r=>r.text()),
+    fetch(`${FILES.trans}?ts=${ts}`).then(r=>r.json()),
+  ]);
+  state.meta = meta;
+  state.munis = munis;
+  state.regionsFC = regions;
+  state.panel = parseCSV(panelText);
+  state.stateTotals = parseCSV(stateText);
+  state.transitions = trans;
+
+  // v11-only: single area-trajectory series across the 3 districts AOI.
+  state.totalsByVer = {};
+  try {
+    const r = await fetch(`${DATA_DIR}state_totals_v11.csv?ts=${ts}`, { cache: "no-store" });
+    if (r.ok) state.totalsByVer["v11"] = parseCSV(await r.text());
+  } catch (e) { /* ignore */ }
+  // Optional ground-truth reference: SIAP cierre agrícola for the AOI
+  // municipios. CSV at dashboard/data/siap_aoi_totals.csv with header
+  // 'year,area_ha[,area_ha_lo95,area_ha_hi95]'.
+  state.siapTotals = null;
+  try {
+    const r = await fetch(`${DATA_DIR}siap_aoi_totals.csv?ts=${ts}`, { cache: "no-store" });
+    if (r.ok) state.siapTotals = parseCSV(await r.text());
+  } catch (e) { /* ignore */ }
+
+  // initialize selected regions = all
+  meta.regions_order.forEach(r => state.selectedRegions.add(r));
+
+  document.getElementById("version-pill").textContent = meta.version;
+  document.getElementById("updated-date").textContent = meta.generated;
+  document.getElementById("footer-version").textContent =
+    `${meta.project} ${meta.version} · ${meta.generated} · synthetic=${meta.synthetic}`;
+}
+
+// ---------- Live auto-refresh ----------
+// Polls metadata.json + state_totals.csv + pixel json every N seconds.
+// If anything changed, the chart, KPIs and pixel overlay re-render automatically.
+let lastMetaTs = null;
+let knownPixelYears = new Set();
+
+async function liveTick() {
+  try {
+    const m = await fetch(`${FILES.meta}?ts=${Date.now()}`).then(r => r.json()).catch(() => null);
+    if (!m) return;
+    const changed = m.generated !== lastMetaTs;
+    if (changed) {
+      lastMetaTs = m.generated;
+      // Re-load state_totals so the boom chart picks up new years
+      const stateText = await fetch(`${FILES.state}?ts=${Date.now()}`).then(r => r.text());
+      state.stateTotals = parseCSV(stateText);
+      state.meta = m;
+      document.getElementById("updated-date").textContent = m.generated;
+      document.getElementById("footer-version").textContent =
+        `${m.project} ${m.version} · ${m.generated} · synthetic=${m.synthetic}`;
+      // Flash the live indicator
+      const liveBadge = document.getElementById("live-badge");
+      if (liveBadge) {
+        liveBadge.classList.add("flash");
+        setTimeout(() => liveBadge.classList.remove("flash"), 1200);
+      }
+      // Re-render
+      refresh();
+    }
+    // Check pixel JSONs — track last-modified per year. If a JSON changed
+    // (e.g. user re-ran render_overlay with new color), invalidate the cache
+    // for that year and re-render the overlay if currently visible.
+    const allYears = (m.years_processed || []).concat([2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]);
+    for (const y of new Set(allYears)) {
+      const r = await fetch(`data/pixels_${y}.json?ts=${Date.now()}`, { cache: "no-store" }).catch(() => null);
+      if (!r || !r.ok) continue;
+      const txt = await r.text();
+      const prev = pixelMeta[y] ? JSON.stringify(pixelMeta[y]) : null;
+      if (prev !== txt) {
+        try {
+          pixelMeta[y] = JSON.parse(txt);
+        } catch (e) { continue; }
+        if (state.year === y) updatePixelOverlay();
+      }
+    }
+  } catch (e) { /* swallow */ }
+}
+
+function startLiveMode(intervalMs = 20000) {
+  liveTick();
+  setInterval(liveTick, intervalMs);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift().split(",");
+  return lines.map(l => {
+    const parts = l.split(",");
+    const o = {};
+    header.forEach((h,i) => {
+      const v = parts[i];
+      o[h] = isNaN(+v) || v === "" ? v : +v;
+    });
+    return o;
+  });
+}
+
+// ---------- Map ----------
+let map, munisLayer, regionsLayer, mgrsLayer, baseLayer;
+let pixelLayer = null;           // active L.imageOverlay for current year
+const pixelMeta = {};            // year -> { bounds, agave_color, ... }
+let pixelOverlayEnabled = true;  // toggled by the Layers checkbox
+let pixelOpacity = 0.85;
+let pixelMode = "binary";        // "binary" or "probability"
+// Production model: v11 (3 districts AOI = union of 69 municipios from
+// Yautepec + Tlacolula + Miahuatlán, data-driven decision threshold 0.60).
+// Served as a per-year PNG imageOverlay; bounds come from the per-year JSON.
+let modelVersion = "v11";
+
+const BASEMAPS = {
+  osm: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attr: "&copy; OpenStreetMap", maxZoom: 19
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr: "Tiles &copy; Esri — World Imagery", maxZoom: 18
+  },
+  terrain: {
+    url: "https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.png",
+    attr: "Map tiles by Stamen Design, CC BY 3.0", maxZoom: 18,
+    subdomains: "abcd"
+  },
+  light: {
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    attr: "&copy; CARTO &copy; OpenStreetMap", maxZoom: 19, subdomains: "abcd"
+  },
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attr: "&copy; CARTO &copy; OpenStreetMap", maxZoom: 19, subdomains: "abcd"
+  },
+  google_hybrid: {
+    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    attr: "Map data &copy; Google", maxZoom: 20, subdomains: "0123",
+  },
+  google_satellite: {
+    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    attr: "Imagery &copy; Google", maxZoom: 20, subdomains: "0123",
+  },
+  google_roadmap: {
+    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    attr: "Map data &copy; Google", maxZoom: 20, subdomains: "0123",
+  },
+  google_terrain: {
+    url: "https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
+    attr: "Map data &copy; Google", maxZoom: 20, subdomains: "0123",
+  },
+};
+
+function switchBasemap(key) {
+  const cfg = BASEMAPS[key] || BASEMAPS.osm;
+  if (baseLayer) map.removeLayer(baseLayer);
+  baseLayer = L.tileLayer(cfg.url, {
+    attribution: cfg.attr, maxZoom: cfg.maxZoom,
+    subdomains: cfg.subdomains || "abc",
+  });
+  baseLayer.addTo(map);
+  baseLayer.bringToBack();
+}
+
+// File naming convention: pixels_v11_<year>.{png,json}.
+function pixelPrefix() {
+  return `pixels_${modelVersion}`;
+}
+
+async function loadPixelMeta(year) {
+  const key = `${modelVersion}_${year}`;
+  if (pixelMeta[key]) return pixelMeta[key];
+  try {
+    const fn = `data/${pixelPrefix()}_${year}.json`;
+    const r = await fetch(fn, { cache: "no-store" });
+    if (!r.ok) return null;
+    const m = await r.json();
+    pixelMeta[key] = m;
+    return m;
+  } catch (e) { return null; }
+}
+
+let pixelOverlayToken = 0;
+function _removeAllImageOverlays() {
+  if (!map) return;
+  map.eachLayer(l => {
+    if (l instanceof L.ImageOverlay) map.removeLayer(l);
+  });
+  pixelLayer = null;
+}
+async function updatePixelOverlay() {
+  if (!map) return;
+  const token = ++pixelOverlayToken;
+  _removeAllImageOverlays();
+  if (!pixelOverlayEnabled) return;
+  const yr = state.year;
+
+  const meta = await loadPixelMeta(yr);
+  if (token !== pixelOverlayToken) return;
+  if (!meta) return;
+  const prefix = pixelPrefix();
+  const fname = pixelMode === "probability"
+    ? `${prefix}_prob_${yr}` : `${prefix}_${yr}`;
+  const url = `data/${fname}.png?ts=${Date.now()}`;
+  const layer = L.imageOverlay(url, meta.bounds, {
+    opacity: pixelOpacity,
+    interactive: false,
+    pane: "overlayPane",
+  });
+  if (token !== pixelOverlayToken) return;
+  pixelLayer = layer.addTo(map);
+  pixelLayer.bringToFront();
+}
+function buildMap() {
+  map = L.map("map", {
+    zoomControl: true,
+    preferCanvas: false,
+    maxZoom: 18,
+  }).setView([16.55, -96.21], 11);
+  switchBasemap("osm");
+
+  // region outlines (built but not added by default — toggle via "Region outlines")
+  regionsLayer = L.geoJSON(state.regionsFC, {
+    style: () => ({ color:"#2f6b3a", weight: 1.2, fillOpacity: 0, dashArray: "3 3" }),
+    onEachFeature: (f, l) => {
+      l.bindTooltip(`<div class="tooltip-card"><b>${f.properties.name_es}</b><br><span style="color:#888">region · ${f.properties.area_km2.toLocaleString()} km²</span></div>`, {sticky:true});
+    }
+  });
+
+  // mgrs grid placeholder: a simple square grid drawn over Oaxaca extent.
+  // Uses 1° spacing as a stand-in for MGRS 100km zone lines.
+  mgrsLayer = L.layerGroup();
+  for (let lon = -99; lon <= -93; lon += 1) {
+    mgrsLayer.addLayer(L.polyline([[14.5, lon], [19, lon]], {color:"#666", weight:0.4, dashArray:"2 4"}));
+  }
+  for (let lat = 15; lat <= 19; lat += 1) {
+    mgrsLayer.addLayer(L.polyline([[lat, -99], [lat, -93]], {color:"#666", weight:0.4, dashArray:"2 4"}));
+  }
+
+  // Municipalities choropleth (built but not added — toggle via "Municipalities")
+  munisLayer = L.geoJSON(state.munis, {
+    style: f => choroStyle(f),
+    onEachFeature: (f, l) => {
+      l.on("mouseover", e => l.setStyle({weight: 2, color: "#222"}));
+      l.on("mouseout",  e => munisLayer.resetStyle(l));
+      l.on("click",     () => { state.selected = f.properties.cve_mun; refresh(); });
+      l.bindTooltip(() => {
+        const a = areaFor(f.properties.cve_mun, state.year);
+        return `<div class="tooltip-card"><b>${f.properties.municipio}</b>` +
+               `<br>${f.properties.region}` +
+               `<br><span class="val">${a == null ? "n/a" : a.toLocaleString(undefined,{maximumFractionDigits:0}) + " ha"}</span>` +
+               `<br><span style="color:#888;font-size:10px;">${state.year} · synthetic</span></div>`;
+      }, {sticky: true});
+    }
+  });
+
+  // Default fit: v11 AOI = union of 69 municipios (Yautepec + Tlacolula + Miahuatlán)
+  map.fitBounds([[15.9375, -97.0904], [17.1550, -95.5560]], { padding: [20, 20] });
+
+  // Load pixel overlay for the initial year (async, doesn't block)
+  updatePixelOverlay();
+}
+
+function choroStyle(f) {
+  const cve = f.properties.cve_mun;
+  const a = areaFor(cve, state.year);
+  const inRegion = state.selectedRegions.has(f.properties.region);
+  const inSearch = state.search === "" || f.properties.municipio.toLowerCase().includes(state.search.toLowerCase());
+  const visible = inRegion && inSearch;
+  if (!visible) {
+    return { fillColor:"#dde0e5", weight:0.4, color:"#cfd2d8", fillOpacity:0.0 };
+  }
+  // No real per-muni data → outline only (no choropleth fill confusing user)
+  if (a == null) {
+    const sel = state.selected === cve;
+    return {
+      fillColor: "#000000",
+      fillOpacity: 0.0,
+      weight: sel ? 2.5 : 0.5,
+      color: sel ? "#111" : "#2f6b3a",
+    };
+  }
+  const {min, max} = areaExtent(state.year);
+  const tnorm = max > min ? (a - min) / (max - min) : 0.5;
+  const fill = ramp(tnorm);
+  const sel = state.selected === cve;
+  return {
+    fillColor: fill,
+    weight: sel ? 2.5 : 0.6,
+    color: sel ? "#111" : "#fff",
+    fillOpacity: 0.82,
+  };
+}
+
+function areaFor(cve, year) {
+  const r = state.panel.find(r => r.cve_mun === cve && r.year === year);
+  return r ? r.area_ha : null;
+}
+function tsFor(cve) {
+  return state.panel.filter(r => r.cve_mun === cve)
+    .sort((a,b) => a.year - b.year);
+}
+function areaExtent(year) {
+  let mn = Infinity, mx = -Infinity;
+  state.panel.forEach(r => {
+    if (r.year !== year) return;
+    const f = state.munis.features.find(f => f.properties.cve_mun === r.cve_mun);
+    if (!f) return;
+    if (!state.selectedRegions.has(f.properties.region)) return;
+    if (state.search && !f.properties.municipio.toLowerCase().includes(state.search.toLowerCase())) return;
+    if (r.area_ha < mn) mn = r.area_ha;
+    if (r.area_ha > mx) mx = r.area_ha;
+  });
+  if (mn === Infinity) { mn = 0; mx = 1; }
+  return {min: mn, max: mx};
+}
+
+// ---------- Filters UI ----------
+function buildFilters() {
+  // Year range
+  const yr = document.getElementById("year-range");
+  const yd = document.getElementById("year-display");
+  const speedSel = document.getElementById("play-speed");
+  const loopChk = document.getElementById("play-loop");
+  const ticksDiv = document.getElementById("year-ticks");
+  const Y_MIN = +yr.min, Y_MAX = +yr.max;
+
+  // Render year tick labels under the slider
+  if (ticksDiv && !ticksDiv.dataset.built) {
+    ticksDiv.innerHTML = "";
+    for (let y = Y_MIN; y <= Y_MAX; y++) {
+      const s = document.createElement("span");
+      s.textContent = String(y).slice(2);   // 17, 18, ..., 25
+      s.style.cursor = "pointer";
+      s.title = String(y);
+      s.addEventListener("click", () => {
+        state.year = y; yr.value = y; yd.textContent = y; refresh();
+      });
+      ticksDiv.appendChild(s);
+    }
+    ticksDiv.dataset.built = "1";
+  }
+
+  yr.value = state.year;
+  yd.textContent = state.year;
+  yr.addEventListener("input", () => { state.year = +yr.value; yd.textContent = state.year; refresh(); });
+
+  // Play / pause / speed / loop
+  const playBtn = document.getElementById("play-btn");
+  function startPlay() {
+    if (state.playInterval) clearInterval(state.playInterval);
+    state.playing = true; playBtn.textContent = "❚❚";
+    const tick = () => {
+      let y = state.year + 1;
+      if (y > Y_MAX) {
+        if (loopChk && loopChk.checked) {
+          y = Y_MIN;
+        } else {
+          stopPlay(); return;
+        }
+      }
+      state.year = y; yr.value = y; yd.textContent = y; refresh();
+    };
+    state.playInterval = setInterval(tick, +speedSel.value);
+  }
+  function stopPlay() {
+    if (state.playInterval) clearInterval(state.playInterval);
+    state.playInterval = null;
+    state.playing = false;
+    playBtn.textContent = "▶";
+  }
+  playBtn.addEventListener("click", () => state.playing ? stopPlay() : startPlay());
+  // Restart with new interval if speed changes mid-play
+  speedSel.addEventListener("change", () => { if (state.playing) startPlay(); });
+
+  // Regions chips
+  const rl = document.getElementById("region-list");
+  rl.innerHTML = "";
+  state.meta.regions_order.forEach(rname => {
+    const display = state.meta.regions_display[rname];
+    const c = document.createElement("span");
+    c.className = "region-chip on";
+    c.textContent = display;
+    c.dataset.region = rname;
+    c.addEventListener("click", () => {
+      if (state.selectedRegions.has(rname)) state.selectedRegions.delete(rname);
+      else state.selectedRegions.add(rname);
+      c.classList.toggle("on");
+      refresh();
+    });
+    rl.appendChild(c);
+  });
+  document.getElementById("region-all").addEventListener("click", () => {
+    const all = state.selectedRegions.size === state.meta.regions_order.length;
+    state.selectedRegions = new Set(all ? [] : state.meta.regions_order);
+    document.querySelectorAll(".region-chip").forEach(c => {
+      if (all) c.classList.remove("on");
+      else c.classList.add("on");
+    });
+    refresh();
+  });
+
+  // Muni search
+  const ms = document.getElementById("muni-search");
+  ms.addEventListener("input", () => { state.search = ms.value; renderMuniList(); refresh(); });
+  renderMuniList();
+
+  // Downloads
+  document.getElementById("dl-csv").addEventListener("click", downloadFilteredCSV);
+  document.getElementById("dl-geojson").addEventListener("click", downloadMapViewGeoJSON);
+
+  // Layers
+  document.getElementById("toggle-mgrs").addEventListener("change", e => {
+    state.showMgrs = e.target.checked;
+    if (state.showMgrs) mgrsLayer.addTo(map); else map.removeLayer(mgrsLayer);
+  });
+  document.getElementById("toggle-regions").addEventListener("change", e => {
+    state.showRegions = e.target.checked;
+    if (state.showRegions) regionsLayer.addTo(map); else map.removeLayer(regionsLayer);
+  });
+  document.getElementById("toggle-pixels").addEventListener("change", e => {
+    pixelOverlayEnabled = e.target.checked;
+    updatePixelOverlay();
+  });
+  document.querySelectorAll('input[name="pixel-mode"]').forEach(el => {
+    el.addEventListener("change", e => {
+      if (e.target.checked) {
+        pixelMode = e.target.value;
+        document.getElementById("prob-legend").style.display =
+          pixelMode === "probability" ? "block" : "none";
+        updatePixelOverlay();
+      }
+    });
+  });
+  // v10-only build: the model-version pill is a static label, no click handler.
+  document.getElementById("toggle-munis").addEventListener("change", e => {
+    if (e.target.checked) munisLayer.addTo(map); else map.removeLayer(munisLayer);
+  });
+  document.getElementById("pixel-opacity").addEventListener("input", e => {
+    pixelOpacity = (+e.target.value) / 100;
+    if (pixelLayer) pixelLayer.setOpacity(pixelOpacity);
+  });
+  document.getElementById("basemap-select").addEventListener("change", e => {
+    switchBasemap(e.target.value);
+  });
+}
+
+function renderMuniList() {
+  const el = document.getElementById("muni-list");
+  el.innerHTML = "";
+  const q = state.search.toLowerCase();
+  const items = state.munis.features
+    .filter(f => state.selectedRegions.has(f.properties.region))
+    .filter(f => !q || f.properties.municipio.toLowerCase().includes(q))
+    .sort((a,b) => a.properties.municipio.localeCompare(b.properties.municipio));
+  if (items.length === 0) {
+    const li = document.createElement("li"); li.className = "empty"; li.textContent = t("no_munis"); el.appendChild(li); return;
+  }
+  items.forEach(f => {
+    const li = document.createElement("li");
+    li.textContent = f.properties.municipio + " · " + f.properties.region;
+    if (state.selected === f.properties.cve_mun) li.classList.add("sel");
+    li.addEventListener("click", () => { state.selected = f.properties.cve_mun; refresh(); });
+    el.appendChild(li);
+  });
+}
+
+// ---------- Right panel ----------
+let chartTrend = null;
+let chartTrans = null;
+function renderDetails(cve) {
+  const det = document.getElementById("details");
+  const f = state.munis.features.find(f => f.properties.cve_mun === cve);
+  if (!f) { renderStateKPIs(); return; }
+  const ts = tsFor(cve);
+  const cur = ts.find(r => r.year === state.year);
+  const first = ts[0], last = ts[ts.length-1];
+  const cagr = (Math.pow(last.area_ha / first.area_ha, 1/(ts.length - 1)) - 1) * 100;
+  det.innerHTML = `
+    <div class="row-flex" style="margin-bottom:6px;">
+      <h3 class="panel-h">${f.properties.municipio}</h3>
+      <button id="clear-sel" class="dl-btn" style="padding:2px 6px;font-size:11px;">×</button>
+    </div>
+    <div class="panel-sub">${f.properties.region} · ${f.properties.cve_mun} · ${f.properties.area_km2.toLocaleString()} km²</div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">${t("cur_area")} (${state.year})</div>
+        <div class="value">${cur ? cur.area_ha.toLocaleString(undefined,{maximumFractionDigits:0}) : "—"}</div>
+        <div class="delta">ha · ±${cur ? cur.area_ha_se.toLocaleString(undefined,{maximumFractionDigits:0}) : "—"} SE</div></div>
+      <div class="kpi"><div class="label">${t("cagr")}</div>
+        <div class="value">${cagr.toFixed(1)}%</div>
+        <div class="delta ${cagr>=0?"up":"dn"}">${cagr>=0?"▲":"▼"} 2015→2025</div></div>
+    </div>
+    <div class="chart-wrap">
+      <h4>${t("trend")} (ha)</h4>
+      <div class="chart-canvas-wrap"><canvas id="chart-trend"></canvas></div>
+    </div>
+    <div class="chart-wrap">
+      <h4>${t("transitions")}</h4>
+      <div class="chart-canvas-wrap"><canvas id="chart-trans"></canvas></div>
+    </div>
+    <a class="data-row-link" id="csv-row-link" href="${FILES.panel}" target="_blank">${t("csv_link")} →</a>
+  `;
+  document.getElementById("clear-sel").addEventListener("click", () => { state.selected = null; refresh(); });
+  drawTrendChart(ts);
+  drawTransChart(f.properties.region);
+}
+
+function drawTrendChart(ts) {
+  const ctx = document.getElementById("chart-trend");
+  if (!ctx) return;
+  if (chartTrend) chartTrend.destroy();
+  chartTrend = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: ts.map(r => r.year),
+      datasets: [{
+        label: "Area (ha)",
+        data: ts.map(r => r.area_ha),
+        borderColor: "#2f6b3a", backgroundColor: "rgba(47,107,58,0.15)",
+        tension: 0.25, fill: true, pointRadius: 2.5, borderWidth: 2,
+      }]
+    },
+    options: chartOpts(false)
+  });
+}
+
+function drawTransChart(region) {
+  const ctx = document.getElementById("chart-trans");
+  if (!ctx) return;
+  const t = state.transitions.regions[region] || state.transitions.state_mean;
+  if (chartTrans) chartTrans.destroy();
+  chartTrans = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["forest","secondary_veg","milpa","bare"],
+      datasets: [{
+        data: [t.forest, t.secondary_veg, t.milpa, t.bare],
+        backgroundColor: ["#2f6b3a","#7aa874","#c08c2c","#9aa3ad"],
+        borderWidth: 1, borderColor: "#fff",
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "55%",
+      plugins: {
+        legend: { position: "right", labels: { font: { size: 10 } } },
+        tooltip: { callbacks: { label: (c) => `${c.label}: ${(c.parsed*100).toFixed(0)}%` } }
+      }
+    }
+  });
+}
+
+function renderStateKPIs() {
+  const det = document.getElementById("details");
+  const yr = state.year;
+  // total = sum of currently-filtered munis for selected year
+  const cves = state.munis.features
+    .filter(f => state.selectedRegions.has(f.properties.region))
+    .filter(f => !state.search || f.properties.municipio.toLowerCase().includes(state.search.toLowerCase()))
+    .map(f => f.properties.cve_mun);
+  const rows = state.panel.filter(r => cves.includes(r.cve_mun));
+  let total = rows.filter(r => r.year === yr).reduce((s,r)=>s+r.area_ha,0);
+  let totalPrev = rows.filter(r => r.year === yr-1).reduce((s,r)=>s+r.area_ha,0);
+  // Fallback to statewide totals when per-muni panel is empty/zero (populate run with --skip-municipal)
+  if (total === 0 && state.stateTotals && state.stateTotals.length) {
+    const cur = state.stateTotals.find(r => r.year === yr);
+    const prev = state.stateTotals.find(r => r.year === yr-1);
+    if (cur)  total = cur.area_ha;
+    if (prev) totalPrev = prev.area_ha;
+  }
+  const yoy = totalPrev > 0 ? ((total-totalPrev)/totalPrev*100) : 0;
+
+  // top 5 by absolute expansion in selected year
+  const top = state.munis.features
+    .filter(f => cves.includes(f.properties.cve_mun))
+    .map(f => {
+      const cur = state.panel.find(r => r.cve_mun === f.properties.cve_mun && r.year === yr);
+      const prev= state.panel.find(r => r.cve_mun === f.properties.cve_mun && r.year === yr-1);
+      const d = (cur && prev) ? cur.area_ha - prev.area_ha : 0;
+      return { name: f.properties.municipio, region: f.properties.region, d };
+    })
+    .sort((a,b) => b.d - a.d)
+    .slice(0,5);
+
+  det.innerHTML = `
+    <h3 class="panel-h">${t("nothing_selected_h")} · ${yr}</h3>
+    <div class="panel-sub">${t("nothing_selected_sub")}</div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">${t("kpi_total")}</div>
+        <div class="value">${total.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+        <div class="delta">ha · ${cves.length} muni.</div></div>
+      <div class="kpi"><div class="label">${t("kpi_yoy")} (${yr-1}→${yr})</div>
+        <div class="value">${yoy.toFixed(1)}%</div>
+        <div class="delta ${yoy>=0?"up":"dn"}">${yoy>=0?"▲":"▼"} synthetic</div></div>
+    </div>
+    <div class="section-h" style="margin-top:0;">${t("kpi_top")}</div>
+    <ol class="top5">
+      ${top.map(x => `<li><span>${x.name} <small style="color:#888">${x.region}</small></span>
+            <span class="v">+${x.d.toLocaleString(undefined,{maximumFractionDigits:0})} ha</span></li>`).join("")}
+    </ol>
+    <div class="chart-wrap">
+      <h4>${t("transitions")} · state mean</h4>
+      <div class="chart-canvas-wrap"><canvas id="chart-trans"></canvas></div>
+    </div>
+  `;
+  drawTransChart("__state_mean__");  // doesn't exist → falls back to state_mean
+}
+
+// ---------- State chart (footer) ----------
+// v11-only boom trajectory across the 3-district AOI, with the
+// 95% bootstrap CI band from state_totals_v11.csv.
+let chartState = null;
+const V11_COLOR = "#1565C0";
+
+function drawStateChart() {
+  const ctx = document.getElementById("chart-state");
+  if (chartState) chartState.destroy();
+
+  const rows = state.totalsByVer?.v11 || [];
+  const labels = rows.map(r => r.year);
+
+  const datasets = [];
+  if (rows.length) {
+    const lo = rows.map(r => +r.area_ha_lo95);
+    const hi = rows.map(r => +r.area_ha_hi95);
+    const area = rows.map(r => +r.area_ha);
+    datasets.push({
+      label: "v11 95% CI (upper)",
+      data: hi,
+      borderColor: "transparent",
+      backgroundColor: "rgba(21,101,192,0.18)",
+      pointRadius: 0, borderWidth: 0, tension: 0.25, fill: "+1",
+    });
+    datasets.push({
+      label: "v11 95% CI (lower)",
+      data: lo,
+      borderColor: "transparent",
+      backgroundColor: "rgba(21,101,192,0.18)",
+      pointRadius: 0, borderWidth: 0, tension: 0.25, fill: false,
+    });
+    datasets.push({
+      label: "v11 · raw map area (3 districts · thr=0.60)",
+      data: area,
+      borderColor: V11_COLOR,
+      backgroundColor: V11_COLOR,
+      borderWidth: 3, pointRadius: 4, tension: 0.25, fill: false,
+    });
+  }
+
+  // SIAP ground-truth reference line (if the CSV is present).
+  if (state.siapTotals && state.siapTotals.length) {
+    const byYear = Object.fromEntries(state.siapTotals.map(r => [r.year, r]));
+    datasets.push({
+      label: "SIAP cierre (ground truth)",
+      data: labels.map(y => byYear[y]?.area_ha ?? null),
+      borderColor: "#1f2328",
+      backgroundColor: "#1f2328",
+      borderWidth: 2.5,
+      pointRadius: 4, pointStyle: "rect",
+      tension: 0,
+      fill: false,
+      borderDash: [],
+    });
+  }
+
+  // Highlight the selected year on the ACTIVE version's line
+  const activeRows = state.totalsByVer?.[modelVersion];
+  if (activeRows && activeRows.length) {
+    const byYear = Object.fromEntries(activeRows.map(r => [r.year, r]));
+    datasets.push({
+      label: "selected year",
+      data: labels.map(y => y === state.year ? byYear[y]?.area_ha ?? null : null),
+      borderColor: "#000",
+      backgroundColor: "#000",
+      pointRadius: 7,
+      pointHoverRadius: 8,
+      showLine: false,
+    });
+  }
+
+  chartState = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets },
+    options: chartOpts(true),
+  });
+}
+
+function chartOpts(showLegend) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: showLegend, position: "bottom",
+        labels: { boxWidth: 14, boxHeight: 2, font: { size: 11, family: "system-ui, sans-serif" },
+                  padding: 10, usePointStyle: false }
+      },
+      tooltip: {
+        intersect: false, mode: "index",
+        backgroundColor: "rgba(31, 35, 40, 0.92)",
+        titleFont: { size: 12 }, bodyFont: { size: 11 },
+        callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '—' :
+            ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 0})} ha`
+        }
+      }
+    },
+    interaction: { mode: "index", intersect: false },
+    layout: { padding: { top: 4, right: 8, bottom: 0, left: 0 } },
+    scales: {
+      x: {
+        title: { display: true, text: "Year", font: { size: 11, weight: 600 }, color: "#57606a" },
+        ticks: { font: { size: 11 }, color: "#57606a" },
+        grid: { display: false },
+        border: { color: "#57606a" }
+      },
+      y: {
+        title: { display: true, text: "Predicted agave area (ha)",
+                 font: { size: 11, weight: 600 }, color: "#57606a" },
+        ticks: {
+          font: { size: 11 }, color: "#57606a",
+          callback: (v) => v >= 1000 ? `${(v/1000).toFixed(0)} k` : v.toLocaleString()
+        },
+        grid: { color: "#eef0f3" },
+        border: { color: "#57606a" },
+        beginAtZero: true
+      }
+    }
+  };
+}
+
+// ---------- Legend ----------
+function updateLegend() {
+  const ramp = document.getElementById("legend-ramp");
+  ramp.innerHTML = "";
+  for (let i = 0; i < 60; i++) {
+    const s = document.createElement("span");
+    s.style.background = (function(i){const t=i/59; return rampColor(t);} )(i);
+    ramp.appendChild(s);
+  }
+  const {min, max} = areaExtent(state.year);
+  document.getElementById("legend-min").textContent = Math.round(min).toLocaleString();
+  document.getElementById("legend-mid").textContent = Math.round((min+max)/2).toLocaleString();
+  document.getElementById("legend-max").textContent = Math.round(max).toLocaleString();
+  document.getElementById("legend-year").textContent = state.year;
+}
+function rampColor(tn){return ramp(tn);}
+
+// ---------- Downloads ----------
+function downloadFilteredCSV() {
+  const cves = state.munis.features
+    .filter(f => state.selectedRegions.has(f.properties.region))
+    .filter(f => !state.search || f.properties.municipio.toLowerCase().includes(state.search.toLowerCase()))
+    .map(f => f.properties.cve_mun);
+  const rows = state.panel.filter(r => cves.includes(r.cve_mun));
+  const header = ["cve_mun","year","area_ha","area_ha_se","expansion_rate_pct"];
+  const csv = [header.join(",")].concat(rows.map(r => header.map(h => r[h]).join(","))).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  triggerDl(blob, `agave_panel_filtered_${state.year}.csv`);
+}
+function downloadMapViewGeoJSON() {
+  const b = map.getBounds();
+  const out = {
+    type: "FeatureCollection",
+    name: "agave_map_view_export",
+    crs: state.munis.crs,
+    features: state.munis.features
+      .filter(f => state.selectedRegions.has(f.properties.region))
+      .filter(f => !state.search || f.properties.municipio.toLowerCase().includes(state.search.toLowerCase()))
+      .filter(f => {
+        // intersect by polygon centroid
+        const c = f.geometry.coordinates[0].reduce((s,p)=>[s[0]+p[0],s[1]+p[1]], [0,0]);
+        const cx = c[0]/f.geometry.coordinates[0].length, cy = c[1]/f.geometry.coordinates[0].length;
+        return b.contains([cy, cx]);
+      })
+      .map(f => {
+        const a = areaFor(f.properties.cve_mun, state.year);
+        return {...f, properties: {...f.properties, year: state.year, area_ha: a, synthetic: true}};
+      })
+  };
+  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/geo+json" });
+  triggerDl(blob, `agave_view_${state.year}.geojson`);
+}
+function triggerDl(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 200);
+}
+
+// ---------- Refresh pipeline ----------
+function refresh() {
+  if (munisLayer) munisLayer.eachLayer(l => munisLayer.resetStyle(l));
+  if (munisLayer) munisLayer.setStyle(f => choroStyle(f));
+  updateLegend();
+  drawStateChart();
+  if (state.selected) renderDetails(state.selected); else renderStateKPIs();
+  renderMuniList();
+  updatePixelOverlay();   // re-render pixel raster for the active year
+}
+
+// ---------- Init ----------
+(async function init() {
+  try {
+    await loadAll();
+    lastMetaTs = state.meta.generated;
+    buildMap();
+    buildFilters();
+    refresh();
+    startLiveMode(20000);  // auto-refresh every 20s
+    // language toggle
+    document.getElementById("lang-en").addEventListener("click", () => {
+      LANG = "en";
+      document.getElementById("lang-en").classList.add("on");
+      document.getElementById("lang-es").classList.remove("on");
+      applyI18n();
+    });
+    document.getElementById("lang-es").addEventListener("click", () => {
+      LANG = "es";
+      document.getElementById("lang-es").classList.add("on");
+      document.getElementById("lang-en").classList.remove("on");
+      applyI18n();
+    });
+  } catch (e) {
+    document.getElementById("details").innerHTML =
+      `<div class="empty"><b>Error loading data.</b><br>${e.message}<br>` +
+      `Check that <code>dashboard/data/</code> sits next to <code>index.html</code>.</div>`;
+    console.error(e);
+  }
+})();
+</script>
+
+<!-- Results view (loaded only when tab is clicked) -->
+<div id="view-results" role="tabpanel" aria-labelledby="tab-results">
+  <iframe id="results-iframe" title="Model Results" src="about:blank" loading="lazy"></iframe>
+</div>
+
+<script>
+/* ---- Tab switching ---- */
+(function () {
+  const tabMap = document.getElementById("tab-map");
+  const tabRes = document.getElementById("tab-results");
+  const iframe = document.getElementById("results-iframe");
+  let resultsLoaded = false;
+
+  function showMap() {
+    document.body.classList.remove("results-mode");
+    tabMap.classList.add("on");  tabMap.setAttribute("aria-selected", "true");
+    tabRes.classList.remove("on"); tabRes.setAttribute("aria-selected", "false");
+    history.replaceState({}, "", "#map");
+  }
+  function showResults() {
+    if (!resultsLoaded) {
+      iframe.src = "results.html";
+      resultsLoaded = true;
+    }
+    document.body.classList.add("results-mode");
+    tabRes.classList.add("on");  tabRes.setAttribute("aria-selected", "true");
+    tabMap.classList.remove("on"); tabMap.setAttribute("aria-selected", "false");
+    history.replaceState({}, "", "#results");
+  }
+  tabMap.addEventListener("click", showMap);
+  tabRes.addEventListener("click", showResults);
+
+  // Respect deep-link via URL hash
+  if (location.hash === "#results") showResults();
+
+  // ---------- Paper figures lightbox ----------
+  // Click any thumbnail in the sidebar's 'Paper figures' grid → opens a
+  // full-size modal overlay. Click anywhere on the overlay (or press Esc)
+  // to close. Each figure is also linkable directly via its data-fig name.
+  function openFigure(name) {
+    const overlay = document.createElement("div");
+    overlay.id = "fig-lightbox";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(20,22,26,0.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;";
+    const close = document.createElement("button");
+    close.textContent = "× Close";
+    close.style.cssText = "position:absolute;top:16px;right:20px;background:#fff;border:1px solid #888;color:#1f2328;border-radius:4px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:600;";
+    const img = document.createElement("img");
+    img.src = `data/figures/${name}.png?ts=${Date.now()}`;
+    img.style.cssText = "max-width:96vw;max-height:88vh;background:#fff;padding:8px;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.5);";
+    const cap = document.createElement("div");
+    cap.style.cssText = "color:#fff;font-size:12px;margin-top:8px;font-family:system-ui;";
+    cap.textContent = name;
+    overlay.appendChild(close);
+    overlay.appendChild(img);
+    overlay.appendChild(cap);
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay || e.target === close) overlay.remove();
+    });
+    const escClose = (e) => {
+      if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", escClose); }
+    };
+    document.addEventListener("keydown", escClose);
+    document.body.appendChild(overlay);
+  }
+  // Cache-bust thumbnail images so browser always pulls latest after a
+  // figure regen — the http server doesn't send cache-control by default.
+  const FIG_TS = Date.now();
+  document.querySelectorAll(".paper-fig img").forEach(img => {
+    if (!img.src.includes("?")) img.src = img.src + "?ts=" + FIG_TS;
+  });
+  document.querySelectorAll(".paper-fig").forEach(a => {
+    a.addEventListener("click", e => {
+      e.preventDefault();
+      openFigure(a.dataset.fig);
+    });
+  });
+})();
+</script>
+</body>
+</html>

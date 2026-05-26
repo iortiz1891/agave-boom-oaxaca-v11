@@ -1,0 +1,34 @@
+{
+  "model": "AlphaEarth + Random Forest (v2 · multi-year)",
+  "feature_source": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+  "training_years": [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+  "n_features": "64",
+  "n_train": "1684",
+  "n_test": "421",
+  "agave_share_train": "0.285",
+  "accuracy": "0.8789",
+  "kappa": "0.7050",
+  "precision_agave": "0.78",
+  "recall_agave": "0.80",
+  "precision_not_agave": "0.92",
+  "recall_not_agave": "0.91",
+  "confusion_matrix_raw": "[[274  27]\n [ 24  96]]",
+  "top_features": [
+    {"name": "AE_54", "importance": 0.1015},
+    {"name": "AE_34", "importance": 0.0606},
+    {"name": "AE_03", "importance": 0.0521},
+    {"name": "AE_57", "importance": 0.0369},
+    {"name": "AE_22", "importance": 0.0346},
+    {"name": "AE_36", "importance": 0.0344},
+    {"name": "AE_39", "importance": 0.0297},
+    {"name": "AE_05", "importance": 0.0285},
+    {"name": "AE_58", "importance": 0.0284},
+    {"name": "AE_33", "importance": 0.0271}
+  ],
+  "vs_v1": {
+    "v1_accuracy": "0.8068",
+    "v1_kappa": "0.6105",
+    "delta_accuracy_pp": "+7.2",
+    "delta_kappa": "+0.094"
+  }
+}

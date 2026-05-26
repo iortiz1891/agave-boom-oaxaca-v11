@@ -1,0 +1,9 @@
+# Single source of randomness for the entire project.
+# Every random_state, np.random seed, sklearn / torch seed should reference this.
+master_seed: 20251109
+splits:
+  train: 20251109
+  validation: 20251110
+  test: 20251111
+sampling:
+  reference_points: 20251112

@@ -1,0 +1,14 @@
+inegi_code,inegi_class,color,persistent_pixels,new_agave_pixels,lost_agave_pixels,persistent_ha,new_agave_ha,lost_agave_ha,pct_of_new
+40,Cropland,#F096FF,81615,272595,20210,3141.3,10491.9,777.9,68.09
+21,Secondary shrub,#D9A521,1213,72382,2981,46.7,2785.9,114.7,18.08
+11,Secondary tree,#3FA34D,371,26373,853,14.3,1015.1,32.8,6.59
+10,Tree cover,#006400,269,20948,351,10.4,806.3,13.5,5.23
+30,Grassland,#FFFF4C,1735,5852,1404,66.8,225.2,54.0,1.46
+50,Built-up,#FA0000,155,1131,212,6.0,43.5,8.2,0.28
+80,Permanent water,#0064C8,10,1040,44,0.4,40.0,1.7,0.26
+60,Bare / sparse veg.,#B4B4B4,0,1,0,0.0,0.0,0.0,0.0
+20,Shrubland,#FFBB22,0,0,0,0.0,0.0,0.0,0.0
+22,Secondary veg.,#A6BB4D,0,0,0,0.0,0.0,0.0,0.0
+90,Wetland,#0096A0,0,0,0,0.0,0.0,0.0,0.0
+95,Mangrove,#00CF75,0,0,0,0.0,0.0,0.0,0.0
+99,Other,#888888,0,0,0,0.0,0.0,0.0,0.0

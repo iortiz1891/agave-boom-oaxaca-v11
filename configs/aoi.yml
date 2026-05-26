@@ -1,0 +1,39 @@
+# Area of Interest configuration.
+# AOI = (Mezcal DO polygon) ∩ (INEGI Marco Geoestadístico, state of Oaxaca)
+
+aoi:
+  name: "DO Mezcal — Oaxaca (state-wide)"
+  short_name: "do_mezcal_oaxaca"
+  crs:
+    storage: "EPSG:6372"   # Mexico ITRF2008 LCC — area-preserving for Mexico
+    display: "EPSG:4326"
+  # Simplification: every Oaxaca municipality is part of the Mezcal DO,
+  # so the AOI = INEGI state polygon for Oaxaca. No external DO polygon needed.
+  source:
+    oaxaca_state:
+      source: "INEGI Marco Geoestadístico 2024"
+      url: "https://www.inegi.org.mx/temas/mg/"
+      file: "data/external/inegi/mg_oaxaca_2024.gpkg"
+      layer: "ent"
+      cve_ent: "20"
+    note: |
+      The Mezcal Denominación de Origen (DOF NOM-070-SCFI-2016) covers the
+      entire state of Oaxaca. We therefore equate AOI := Oaxaca state.
+      No separate DO polygon download is required.
+
+regions:
+  # 8 statistical regions of Oaxaca (used for stratification & reporting)
+  - canada
+  - costa
+  - istmo
+  - mixteca
+  - papaloapan
+  - sierra_norte
+  - sierra_sur
+  - valles_centrales
+
+reporting_units:
+  - level: "state"        # Oaxaca
+  - level: "region"       # 8 regions
+  - level: "municipality" # 570 municipios
+  - level: "hex_grid_5km" # H3 / hex grid for spatial analysis

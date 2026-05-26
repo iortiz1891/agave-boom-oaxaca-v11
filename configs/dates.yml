@@ -1,0 +1,30 @@
+# Temporal configuration.
+# Annual mosaics built around the Oaxacan agricultural calendar.
+# Espadín planting concentrates Apr–Jun; mature canopy is most stable Nov–Mar.
+# We define a "year-window" centered on the Nov–Apr dry season (clearer skies, stable canopy).
+
+window:
+  name_format: "y{year}"      # e.g. y2018 = window centered on 2018 dry season
+  start_offset: "-11-01"      # year-1, 1 Nov
+  end_offset: "-04-30"        # year, 30 Apr
+
+years: [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+# Per-sensor availability gates
+sensors:
+  sentinel2_l2a:
+    available_from: "2017-03-28"   # global L2A coverage from this date
+    primary_for_years: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+  sentinel2_l1c:
+    available_from: "2015-06-23"
+    use_for_years: [2015, 2016]    # Sen2Cor on the fly for these
+  landsat8:
+    available_from: "2013-04-11"
+    primary_for_years: [2015, 2016]
+    bridge_for_years: [2017]       # supplementary
+  landsat9:
+    available_from: "2021-10-31"
+    primary_for_years: []
+  sentinel1_grd:
+    available_from: "2014-10-03"
+    primary_for_years: [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]

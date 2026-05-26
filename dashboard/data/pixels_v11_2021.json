@@ -1,0 +1,46 @@
+{
+  "year": 2021,
+  "bounds": [
+    [
+      15.937496230443404,
+      -97.09038890954454
+    ],
+    [
+      17.15498829029793,
+      -95.55598857032795
+    ]
+  ],
+  "agave_color": "#E91E63",
+  "threshold": 0.6,
+  "n_agave_cells": 124953,
+  "n_aoi_cells": 30814483,
+  "grid": [
+    6764,
+    8524
+  ],
+  "n_shards": 36,
+  "method": "v10 predictions reprojected + 69-muni mask",
+  "prob_overlay": {
+    "png": "pixels_v11_prob_2021.png",
+    "min_show": 0.4,
+    "colormap": "traffic-4stop",
+    "stops": [
+      {
+        "prob": 0.4,
+        "rgb": "2ECC40"
+      },
+      {
+        "prob": 0.598,
+        "rgb": "FFDC00"
+      },
+      {
+        "prob": 0.802,
+        "rgb": "FF8500"
+      },
+      {
+        "prob": 1.0,
+        "rgb": "DC1400"
+      }
+    ]
+  }
+}

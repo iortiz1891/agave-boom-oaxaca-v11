@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: "If you use this dataset, code, or paper, please cite as follows."
+title: "Decadal mapping of agave cultivation across the three core mezcal-producing districts of Oaxaca (Tlacolula, Yautepec, Miahuatlán; 2017–2025) using AlphaEarth Foundations embeddings — v11 production release"
+type: dataset
+authors:
+  - family-names: Ortiz
+    given-names: Iván
+    email: iortiz1891@gmail.com
+date-released: 2026-05-26
+version: "11.0.0"
+license: MIT
+license-url: https://opensource.org/licenses/MIT
+repository-code: "https://github.com/iortiz1891/agave-boom-oaxaca-v11"
+url: "https://github.com/iortiz1891/agave-boom-oaxaca-v11"
+abstract: >-
+  A reproducible decadal (2017–2025) record of Agave cultivation across
+  the three core mezcal-producing INEGI districts of Oaxaca, México
+  (Tlacolula, Yautepec, Miahuatlán; 69 municipios; ~11,850 km²), at
+  10-meter resolution. The v11 classifier stacks Google's AlphaEarth
+  Foundations annual embeddings (64-dim) with five terrain descriptors
+  (elevation, slope, northness, eastness, TRI from Copernicus DEM GLO-30)
+  and a histogram-gradient-boosting classifier
+  (class_weight='balanced') trained on 4,849 photo-interpreted reference
+  labels. Decision threshold tau=0.60 selected as the global F1 optimum.
+  Held-out performance: overall accuracy 0.9425, Cohen's kappa 0.8018,
+  agave-class precision 0.853, recall 0.821, F1 0.837 on 870 test labels.
+  Raw mapped extent grows from 4,289 ha (2017) to 18,694 ha (2025),
+  a 4.4-fold (+336%) increase, with the largest single-year expansion in
+  2024 (+107%).
+keywords:
+  - agave
+  - mezcal
+  - Oaxaca
+  - remote sensing
+  - land-use change
+  - AlphaEarth Foundations
+  - histogram gradient boosting
+  - 10-meter mapping
+  - Google Earth Engine
+preferred-citation:
+  type: article
+  title: "Decadal mapping of agave cultivation across the three core mezcal-producing districts of Oaxaca (2017–2025)"
+  authors:
+    - family-names: Ortiz
+      given-names: Iván
+  year: 2026
+  journal: "(in preparation)"

@@ -1,0 +1,56 @@
+{
+  "project": "Agave Boom Oaxaca",
+  "version": "v11.0.0",
+  "generated": "2026-05-26T00:00:00Z",
+  "synthetic": false,
+  "source": "AlphaEarth + HGB predictions, restricted to 3-district AOI",
+  "model": {
+    "name": "v11 — HGB AlphaEarth + 5-band terrain, three-district AOI",
+    "classifier": "HistGradientBoostingClassifier(class_weight='balanced')",
+    "threshold": 0.60,
+    "predictors": "AlphaEarth Foundations annual embeddings (64-dim) + DEM elev/slope/northness/eastness/TRI",
+    "training_labels": 4849,
+    "test_labels": 870,
+    "overall_accuracy": 0.9425,
+    "kappa": 0.8018,
+    "precision_agave": 0.853,
+    "recall_agave": 0.821,
+    "f1_agave": 0.837
+  },
+  "aoi": {
+    "name": "Tlacolula + Yautepec + Miahuatlán (3 mezcal districts)",
+    "municipios": 69,
+    "area_km2": 11850,
+    "bbox_wgs84": [-97.0904, 15.9375, -95.5560, 17.1550],
+    "geojson": "../data/reference/v11_aoi.geojson"
+  },
+  "years_processed": [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+  "year_min": 2017,
+  "year_max": 2025,
+  "headline": {
+    "extent_2017_ha": 4288.6,
+    "extent_2025_ha": 18693.7,
+    "fold_increase": 4.36,
+    "percent_increase": 336.0,
+    "largest_single_year_jump_year": 2024,
+    "largest_single_year_jump_pct": 106.82
+  },
+  "regions_order": [
+    "tlacolula",
+    "yautepec",
+    "miahuatlan"
+  ],
+  "regions_display": {
+    "tlacolula": "Tlacolula",
+    "yautepec": "Yautepec",
+    "miahuatlan": "Miahuatlán"
+  },
+  "data_files": {
+    "state_totals": "state_totals_v11.csv",
+    "replaced_covers_phase1": "replaced_covers_v11_phase1.csv",
+    "replaced_covers_per_year": "replaced_covers_v11_per_year.csv",
+    "replaced_covers_inegi_phase1": "replaced_covers_v11_inegi_phase1.csv",
+    "replaced_covers_inegi_per_year": "replaced_covers_v11_inegi_per_year.csv"
+  },
+  "bucket": "gs://ee-ivanortiz-ccdc86-agave/predictions_ae_v10/agave_mask_ae_*"
+}
