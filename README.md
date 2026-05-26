@@ -1,5 +1,7 @@
 # Agave Boom Oaxaca — v11 production release
 
+> **Live dashboard:** <https://iortiz1891.github.io/agave-boom-oaxaca-v11/>
+
 Decadal (2017–2025), 10-meter mapping of *Agave* cultivation across the
 three core mezcal-producing INEGI districts of Oaxaca (Tlacolula,
 Yautepec, Miahuatlán; **69 municipios, ~11,850 km²**).
