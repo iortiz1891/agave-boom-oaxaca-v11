@@ -1,0 +1,75 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model Results — Agave Boom Oaxaca v11</title>
+<style>
+:root{--ac:#E91E63;--bl:#1565C0;--ink:#1c1c1c;--mut:#6b6b6b;--bd:#e6e6e9;--bg:#fafafb;--card:#fff}
+*{box-sizing:border-box;margin:0;padding:0;font-family:Helvetica,Arial,sans-serif}
+body{background:var(--bg);color:var(--ink);padding:20px}
+.wrap{max-width:940px;margin:0 auto}
+h1{font-size:22px;margin-bottom:2px}.sub{color:var(--mut);font-size:13px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+h2{font-size:15px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi{background:#fbeaf0;border-radius:10px;padding:12px}
+.kpi b{display:block;font-size:26px;color:var(--ac);line-height:1.1}.kpi span{font-size:12px;color:#7a2540}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--bd)}th{color:var(--mut);font-size:12px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.cols{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;align-items:start}
+@media(max-width:720px){.cols{grid-template-columns:1fr}}
+img{max-width:100%;border:1px solid var(--bd);border-radius:8px;display:block}
+p{font-size:13px;line-height:1.6;color:#333}
+.note{font-size:12px;color:var(--mut);border-left:3px solid #eee;padding-left:10px;margin-top:8px}
+a{color:var(--bl)}
+.best{background:#eef7f0}
+</style></head><body><div class="wrap">
+<h1>Model results — v11 classifier</h1>
+<div class="sub">Held-out test panel (n = 870) at the production threshold τ&#770; = 0.60 · three-district AOI (69 municipios)</div>
+
+<div class="card">
+  <h2>Headline metrics</h2>
+  <div class="kpis">
+    <div class="kpi"><b>0.9425</b><span>overall accuracy</span></div>
+    <div class="kpi"><b>0.8018</b><span>Cohen&#39;s κ</span></div>
+    <div class="kpi"><b>0.853</b><span>precision (agave)</span></div>
+    <div class="kpi"><b>0.821</b><span>recall (agave)</span></div>
+    <div class="kpi"><b>0.837</b><span>F1 (agave)</span></div>
+  </div>
+  <div class="note">95 % CIs (Wilson / bootstrap): accuracy 0.925–0.956 · κ 0.745–0.852 · precision 0.788–0.901 · recall 0.753–0.873.</div>
+</div>
+
+<div class="card"><h2>Confusion matrix &amp; per-class scores</h2>
+<div class="cols">
+  <div>
+    <table>
+      <tr><th></th><th class="n">pred. not-agave</th><th class="n">pred. agave</th></tr>
+      <tr><td><b>ref. not-agave</b></td><td class="n">692 (TN)</td><td class="n">22 (FP)</td></tr>
+      <tr><td><b>ref. agave</b></td><td class="n">28 (FN)</td><td class="n">128 (TP)</td></tr>
+    </table>
+    <table style="margin-top:10px">
+      <tr><th>Class</th><th class="n">precision</th><th class="n">recall</th></tr>
+      <tr><td>agave</td><td class="n">0.853</td><td class="n">0.821</td></tr>
+      <tr><td>not-agave</td><td class="n">0.961</td><td class="n">0.969</td></tr>
+    </table>
+    <p style="margin-top:10px">False positives (22/870 = 2.5 %) fall mostly in dense xeric scrub adjacent to plantation; false negatives (28/870 = 3.2 %) in young plantation (&lt; 2 yr) with sparse canopy.</p>
+  </div>
+  <div><img src="data/figures/fig6_confusion_v11.png" alt="v11 confusion matrix"></div>
+</div></div>
+
+<div class="card"><h2>Across model versions</h2>
+  <table>
+    <tr><th>Version</th><th>Labels</th><th class="n">τ</th><th class="n">accuracy</th><th class="n">κ</th><th class="n">recall (agave)</th></tr>
+    <tr><td>v8 (AlphaEarth + terrain)</td><td>2,347</td><td class="n">0.75</td><td class="n">0.893</td><td class="n">0.741</td><td class="n">0.825</td></tr>
+    <tr><td>v9 (larger panel)</td><td>4,849</td><td class="n">0.75</td><td class="n">0.9333</td><td class="n">0.7757</td><td class="n">0.827</td></tr>
+    <tr class="best"><td><b>v11 (data-driven τ, 3-district AOI)</b></td><td>4,849</td><td class="n">0.60</td><td class="n">0.9425</td><td class="n">0.8018</td><td class="n">0.821</td></tr>
+  </table>
+  <img src="data/figures/fig5_metrics.png" alt="Metrics across versions" style="margin-top:12px">
+</div>
+
+<div class="card"><h2>Model &amp; caveats</h2>
+  <p><b>Classifier:</b> scikit-learn <code>HistGradientBoostingClassifier</code> (<code>class_weight='balanced'</code>, <code>max_iter=300</code>, <code>learning_rate=0.1</code>, <code>random_state=20251109</code>). <b>Predictors:</b> AlphaEarth Foundations 64-dim annual embeddings + 5-band Copernicus-DEM terrain = 69 features. <b>Decision threshold:</b> τ&#770; = 0.60 (global F1 optimum on the held-out panel).</p>
+  <p class="note">Reported area uses raw map-pixel counts with a spatial block-bootstrap CI (2025: ±1,694 ha); it is <b>not</b> a design-based (Olofsson) estimate, and the reference panel is a purpose-built photo-interpretation set, not a probability sample. See <code>docs/LIMITATIONS.md</code> and <code>docs/PAPER_SCIENCE_CHECK.md</code> in the repository.</p>
+</div>
+
+<div class="sub" style="text-align:center">Source &amp; code: <a href="https://github.com/iortiz1891/agave-boom-oaxaca-v11" target="_blank">github.com/iortiz1891/agave-boom-oaxaca-v11</a></div>
+</div></body></html>
