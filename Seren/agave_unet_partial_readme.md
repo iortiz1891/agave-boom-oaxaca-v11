@@ -1,0 +1,1833 @@
+# Agave Partial Pseudo-Label U-Net Workflow
+
+## Short Summary
+
+This script converts the weak U-Net's probability maps into **partial high-confidence pixel pseudo-labels**, then trains a standard multispectral U-Net using only those confident pixels.
+
+The workflow has three stages:
+
+```text
+build-pseudolabels
+train
+predict
+```
+
+It:
+
+- Reads the original patch-level agave manifest
+- Matches each image with its weak U-Net probability raster
+- Treats known non-agave patches as strong negative supervision
+- Converts only high-confidence pixels in agave-positive patches into training labels
+- Marks uncertain pixels with `255` so they are ignored during training
+- Preserves the original train/validation/test split
+- Trains a normal 9-band U-Net using masked binary cross-entropy and Dice loss
+- Excludes all ignored pixels from the loss and evaluation
+- Selects the best checkpoint using confident-pixel validation performance
+- Evaluates the model against held-out pseudo-label pixels
+- Produces complete probability maps for new imagery
+- Thresholds predictions into binary agave masks
+- Writes per-image prediction summaries
+
+For a positive agave patch, the pseudo-labeling rules are:
+
+```text
+weak probability >= 0.80 → agave        (1)
+weak probability <= 0.10 → non-agave    (0)
+everything between        → ignore      (255)
+```
+
+by default.
+
+For a known non-agave patch:
+
+```text
+every valid pixel → non-agave (0)
+```
+
+The key distinction is that this model receives **pixel-level supervision only where the weak model is considered sufficiently confident**. Uncertain pixels contribute nothing to the segmentation loss.
+
+## Overview
+
+This workflow is the next stage after the weakly supervised U-Net.
+
+The weak U-Net begins with only patch-level labels:
+
+```text
+agave patch
+or
+non-agave patch
+```
+
+and produces exploratory pixel probability maps.
+
+This script then uses those probability maps to create a more conservative intermediate segmentation dataset.
+
+Conceptually:
+
+```text
+Patch-level labels
+        ↓
+Weak U-Net
+        ↓
+Pixel probability maps
+        ↓
+High-confidence filtering
+        ↓
+Partial pseudo-label masks
+        ↓
+Standard U-Net training
+```
+
+The resulting U-Net is therefore more conventionally trained than the weak U-Net because its loss operates directly on individual labeled pixels.
+
+However, those labels were generated from another model rather than human-verified field masks.
+
+The script version is:
+
+```text
+1.0-partial-pseudolabel-unet
+```
+
+## Important Interpretation
+
+This workflow uses:
+
+```text
+partial_high_confidence_pseudolabels
+```
+
+as its supervision source.
+
+Its evaluation is therefore performed against:
+
+```text
+pseudo-label pixels
+```
+
+rather than:
+
+```text
+human field masks
+```
+
+The final metrics file explicitly records the warning:
+
+```text
+Evaluation is against pseudo-label pixels, not human field masks.
+```
+
+This distinction must be preserved when interpreting segmentation performance.
+
+## Pipeline Stages
+
+The script contains three commands:
+
+| Command | Purpose |
+|---|---|
+| `build-pseudolabels` | Convert weak U-Net probabilities into partial masks |
+| `train` | Train a U-Net using confident pseudo-labeled pixels |
+| `predict` | Generate probability maps and binary masks |
+
+## Mask Values
+
+Partial pseudo-label masks use three values:
+
+```text
+0   = confident non-agave
+1   = confident agave
+255 = unknown / ignore
+```
+
+The constant:
+
+```python
+IGNORE = 255
+```
+
+is used throughout training and evaluation.
+
+Pixels marked `255` contribute nothing to the segmentation loss.
+
+## Expected Sentinel-2 Imagery
+
+The U-Net is designed for:
+
+```text
+9 bands
+64 × 64 pixels
+```
+
+The expected Sentinel-2 bands are:
+
+1. B2
+2. B3
+3. B4
+4. B5
+5. B6
+6. B7
+7. B8
+8. B11
+9. B12
+
+The script defines:
+
+```python
+N_BANDS = 9
+SIZE = 64
+
+BANDS = [
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B11",
+    "B12",
+]
+```
+
+## Required Source Manifest
+
+The pseudo-label-building stage begins with a patch-level manifest.
+
+The normalized manifest must ultimately contain:
+
+```text
+image_path
+target
+base_id
+year
+```
+
+The script can derive `target` from several label formats.
+
+## Label Standardization
+
+If the manifest already contains:
+
+```text
+target
+```
+
+that field is retained.
+
+Otherwise, the script checks:
+
+```text
+standardized_label
+```
+
+and converts:
+
+```text
+agave     → 1
+not_agave → 0
+```
+
+If `standardized_label` is unavailable, it checks:
+
+```text
+label
+```
+
+and accepts values including:
+
+```text
+yes       → 1
+agave     → 1
+1         → 1
+
+no        → 0
+not_agave → 0
+0         → 0
+```
+
+Rows without a usable binary target are removed.
+
+Unlike some earlier scripts, this workflow requires explicit:
+
+```text
+base_id
+year
+image_path
+```
+
+columns rather than deriving them from another identifier.
+
+## Required Weak U-Net Probability Rasters
+
+The `build-pseudolabels` command also requires a directory containing probability maps generated by the weak U-Net.
+
+For each input image, the script searches for either:
+
+```text
+{image_stem}_weak_unet_probability.tif
+```
+
+or:
+
+```text
+{image_stem}_probability.tif
+```
+
+The first matching file is used.
+
+If no probability raster is found for an image, that observation is skipped and counted as:
+
+```text
+missing_probability_rasters
+```
+
+## `build-pseudolabels`
+
+The first stage creates partial segmentation masks.
+
+A typical command is:
+
+```bash
+python agave_unet_partial.py build-pseudolabels ^
+    --manifest "agave_cnn_manifest.csv" ^
+    --probability-dir "weak_unet_predictions" ^
+    --output-dir "partial_pseudolabels"
+```
+
+## Strong Negative Supervision
+
+For a patch whose known target is:
+
+```text
+target = 0
+```
+
+the script assumes strong negative supervision.
+
+Every valid image pixel becomes:
+
+```text
+0 = non-agave
+```
+
+Conceptually:
+
+```text
+Known non-agave patch
+        ↓
+all valid pixels
+        ↓
+confident non-agave
+```
+
+The weak U-Net probability is not used to override the known negative patch label.
+
+This makes negative patches substantially more strongly supervised than positive patches.
+
+## Positive-Patch Pseudo-Labels
+
+For a patch whose known target is:
+
+```text
+target = 1
+```
+
+the weak U-Net probability map determines which pixels are trusted.
+
+The default rules are:
+
+```text
+probability <= 0.10 → 0
+probability >= 0.80 → 1
+0.10 < probability < 0.80 → 255
+```
+
+In other words:
+
+```text
+very low probability  → confident non-agave
+very high probability → confident agave
+middle probabilities  → unknown
+```
+
+Only the high-confidence tails of the probability distribution become segmentation labels.
+
+## Positive Threshold
+
+The positive threshold is controlled by:
+
+```text
+--positive-threshold
+```
+
+with default:
+
+```text
+0.80
+```
+
+Increasing it makes positive pseudo-labels more conservative.
+
+For example:
+
+```text
+--positive-threshold 0.90
+```
+
+requires a weak-model probability of at least 90% before a pixel is labeled agave.
+
+## Negative Threshold
+
+The negative threshold is controlled by:
+
+```text
+--negative-threshold
+```
+
+with default:
+
+```text
+0.10
+```
+
+Decreasing it makes confident negative pixels inside positive patches more conservative.
+
+For example:
+
+```text
+--negative-threshold 0.05
+```
+
+requires a weak-model probability of at most 5% before the pixel becomes a confident non-agave pseudo-label.
+
+## Uncertain Pixels
+
+All remaining positive-patch pixels retain:
+
+```text
+255
+```
+
+and are ignored.
+
+For example:
+
+```text
+Weak probability = 0.47
+→ 255
+→ no training loss
+```
+
+This prevents uncertain weak-model predictions from automatically becoming hard segmentation labels.
+
+## Why Partial Pseudo-Labels Are Used
+
+A direct pseudo-labeling strategy could classify every pixel as:
+
+```text
+0 or 1
+```
+
+using a single threshold such as 0.5.
+
+That would convert uncertain weak-model predictions into apparently certain training labels.
+
+This workflow instead creates an explicit uncertainty region:
+
+```text
+0.10 < p < 0.80
+```
+
+under the defaults.
+
+The resulting training mask may therefore contain large ignored areas.
+
+This sacrifices label coverage in exchange for higher pseudo-label confidence.
+
+## Grid Validation
+
+Before creating the mask, the script compares the weak probability raster dimensions with the original image.
+
+If width or height differs, it raises:
+
+```text
+Grid size mismatch
+```
+
+The original Sentinel-2 raster also provides:
+
+- Valid-pixel mask
+- Width
+- Height
+- Transform
+- CRS
+
+The generated mask uses the original image profile so it remains geospatially aligned.
+
+## Partial Mask Naming Convention
+
+Each generated pseudo-label raster uses:
+
+```text
+{image_stem}_partial_mask.tif
+```
+
+For example:
+
+```text
+INT_0042_2023_sentinel2_dry_median_64_snapped_partial_mask.tif
+```
+
+The raster is:
+
+```text
+single-band
+uint8
+DEFLATE compressed
+```
+
+with:
+
+```text
+nodata = 255
+```
+
+## Partial Manifest
+
+For every successfully created mask, the script adds a row to:
+
+```text
+partial_unet_manifest.csv
+```
+
+The original source-manifest fields are retained.
+
+Additional fields include:
+
+```text
+mask_path
+weak_probability_path
+confident_pixels
+confident_positive_pixels
+confident_negative_pixels
+ignored_pixels
+fraction_confident
+fraction_positive
+```
+
+
+
+## Confidence Statistics
+
+For every mask:
+
+```text
+confident_pixels
+```
+
+counts all pixels labeled:
+
+```text
+0 or 1
+```
+
+while:
+
+```text
+ignored_pixels
+```
+
+counts pixels labeled:
+
+```text
+255
+```
+
+The script also calculates:
+
+```text
+fraction_confident
+```
+
+as:
+
+```text
+confident pixels
+────────────────
+all mask pixels
+```
+
+and:
+
+```text
+fraction_positive
+```
+
+as:
+
+```text
+confident positive pixels
+─────────────────────────
+all mask pixels
+```
+
+These fields help quantify how much usable pseudo-supervision exists in each image.
+
+## Pseudo-Label Report
+
+The script writes:
+
+```text
+partial_unet_manifest.report.json
+```
+
+containing:
+
+- Script version
+- Source rows
+- Masks created
+- Missing probability rasters
+- Positive threshold
+- Negative threshold
+- Mask-value definitions
+
+When masks exist, it also reports separate statistics for positive and negative patches.
+
+## Positive-Patch Summary
+
+For known agave patches, the report includes:
+
+```text
+n
+mean_fraction_confident
+mean_fraction_positive
+median_fraction_positive
+```
+
+These values describe how much of the positive-patch imagery survived the confidence filtering.
+
+## Negative-Patch Summary
+
+For known non-agave patches, the report includes:
+
+```text
+n
+mean_fraction_confident
+```
+
+Because all valid pixels in negative patches receive label `0`, the confident fraction should generally be much higher than for positive patches, aside from invalid raster pixels.
+
+
+
+## U-Net Architecture
+
+The training stage uses a standard encoder-decoder U-Net.
+
+With the default:
+
+```text
+base_channels = 32
+```
+
+the encoder progresses approximately as:
+
+```text
+9 input bands
+↓
+32 channels
+↓
+64 channels
+↓
+128 channels
+↓
+256 channels
+↓
+512-channel bottleneck
+```
+
+The decoder then reconstructs the spatial output using transposed convolutions and skip connections.
+
+## Double Convolution Blocks
+
+Each block contains:
+
+```text
+3 × 3 convolution
+Batch Normalization
+ReLU
+
+3 × 3 convolution
+Batch Normalization
+ReLU
+```
+
+The same block structure is used throughout the encoder and decoder.
+
+## Decoder
+
+The decoder progresses approximately as:
+
+```text
+512
+↓
+256
+↓
+128
+↓
+64
+↓
+32
+↓
+1 output channel
+```
+
+At every decoder level, the upsampled representation is concatenated with the corresponding encoder feature map.
+
+The final output is a:
+
+```text
+64 × 64
+```
+
+pixel-logit map.
+
+## Spectral Normalization
+
+Normalization statistics are calculated from the **training split only**.
+
+For each Sentinel-2 band, the script calculates:
+
+```text
+mean
+standard deviation
+```
+
+using valid raster pixels.
+
+The input is standardized as:
+
+```text
+(x - mean) / standard deviation
+```
+
+These values are saved to:
+
+```text
+normalization.json
+```
+
+## Normalization Sample Size
+
+The default maximum number of training images used is:
+
+```text
+2000
+```
+
+controlled through:
+
+```text
+--normalization-images
+```
+
+If fewer training observations exist, all available rows are used.
+
+## Invalid Pixel Handling
+
+During model loading:
+
+1. The raster validity mask is read.
+2. Invalid pixels are changed to `NaN`.
+3. Remaining non-finite values are replaced with the corresponding training-band mean.
+4. The raster is normalized.
+
+Mean-filled pixels therefore become approximately zero after standardization.
+
+## Training Data Augmentation
+
+The training dataset applies random:
+
+- Horizontal flips
+- Vertical flips
+- 90° rotations
+- 180° rotations
+- 270° rotations
+
+The same geometric transformation is applied to:
+
+- Sentinel-2 image
+- Partial pseudo-label mask
+
+This preserves image-mask alignment.
+
+Validation and test imagery are not augmented.
+
+## Masked Segmentation Loss
+
+The central training mechanism is the masked segmentation loss.
+
+First:
+
+```text
+valid = mask != 255
+```
+
+Only those pixels are included.
+
+If a batch item contains no confident pixels, the loss contribution becomes zero.
+
+## Masked Binary Cross-Entropy
+
+For valid pixels only, the script calculates:
+
+```text
+Binary Cross-Entropy with Logits
+```
+
+between:
+
+```text
+predicted pixel logit
+```
+
+and:
+
+```text
+pseudo-label 0 or 1
+```
+
+Ignored pixels never enter the BCE calculation.
+
+## Masked Dice Loss
+
+The script also calculates Dice overlap using only confident pixels.
+
+Conceptually:
+
+```text
+Dice =
+2 × predicted/target intersection + smoothing
+──────────────────────────────────────────────
+predicted positives + target positives + smoothing
+```
+
+The Dice loss is:
+
+```text
+1 - Dice
+```
+
+## Combined Loss
+
+The final segmentation loss is:
+
+```text
+masked BCE + masked Dice loss
+```
+
+Unlike the weak U-Net, this stage no longer uses:
+
+- Top-k patch pooling
+- Total-variation regularization
+- Positive-patch sparsity loss
+- Patch-level binary loss
+
+Instead, it trains directly on the confident pseudo-labeled pixels.
+
+## Training Manifest Requirements
+
+The `train` command expects the pseudo-label manifest to contain:
+
+```text
+image_path
+mask_path
+target
+base_id
+year
+split
+```
+
+The script specifically requires the manifest to already carry:
+
+```text
+train
+validation
+test
+```
+
+assignments.
+
+If the `split` column is missing, it raises:
+
+```text
+Use a manifest carrying the train/validation/test split from the weak U-Net run.
+```
+
+This is intentional.
+
+## Why the Original Split Must Be Preserved
+
+The partial U-Net is intended to follow the weak U-Net in the same experimental chain.
+
+It therefore does not create a new random geographic split.
+
+Reusing the same partition makes comparison between:
+
+```text
+weak U-Net
+```
+
+and:
+
+```text
+partial pseudo-label U-Net
+```
+
+more meaningful.
+
+## Spatial Leakage Validation
+
+The script converts:
+
+```text
+val
+```
+
+to:
+
+```text
+validation
+```
+
+when necessary.
+
+It then extracts the three partitions and verifies that:
+
+```text
+base_id
+```
+
+does not overlap across:
+
+- Training
+- Validation
+- Test
+
+Any overlap causes:
+
+```text
+base_id leakage detected.
+```
+
+## Split Outputs
+
+The exact rows used by the partial U-Net are saved again as:
+
+```text
+train_manifest.csv
+validation_manifest.csv
+test_manifest.csv
+```
+
+inside the partial U-Net output directory.
+
+This preserves the experiment's exact inputs.
+
+## Balanced Sampling
+
+The training stage supports:
+
+```text
+--balanced-sampler
+```
+
+When enabled, training observations receive inverse-frequency weights based on the patch-level:
+
+```text
+target
+```
+
+and are sampled through:
+
+```text
+WeightedRandomSampler
+```
+
+with replacement.
+
+Note that balancing is therefore performed at the **patch level**, not according to the number of positive and negative pseudo-labeled pixels.
+
+## Training Device
+
+The workflow automatically selects:
+
+```text
+CUDA
+```
+
+when available.
+
+Otherwise it uses:
+
+```text
+CPU
+```
+
+A specific device may be provided through:
+
+```text
+--device
+```
+
+## Optimizer
+
+Training uses:
+
+```text
+AdamW
+```
+
+with defaults:
+
+```text
+learning rate = 0.001
+weight decay  = 0.0001
+```
+
+## Learning-Rate Scheduler
+
+The script uses:
+
+```text
+ReduceLROnPlateau
+```
+
+with:
+
+```text
+mode = max
+factor = 0.5
+patience = 3
+```
+
+The scheduler monitors confident-pixel validation performance.
+
+## Pixel-Level Evaluation
+
+Validation and test evaluation include **only pixels whose pseudo-label is not `255`**.
+
+For each image:
+
+```text
+valid = pseudo-mask != 255
+```
+
+Only those pixels are collected.
+
+The model's sigmoid probability and pseudo-label are then used to calculate metrics.
+
+This means the reported pixel count may be substantially smaller than:
+
+```text
+number of images × 4096 pixels
+```
+
+because ignored pixels are excluded.
+
+## Pixel-Level Metrics
+
+The script calculates:
+
+- Number of evaluated pixels
+- Positive pixel count
+- Threshold
+- Accuracy
+- Balanced accuracy
+- Precision
+- Recall
+- F1
+- Confusion matrix
+- ROC AUC
+- Average precision
+
+The evaluation threshold during training is:
+
+```text
+0.5
+```
+
+## Validation Model Selection
+
+After every epoch:
+
+1. The validation masks are evaluated only on confident pixels.
+2. Pixel probabilities are collected.
+3. Metrics are calculated at threshold `0.5`.
+4. The preferred score is average precision.
+5. If average precision is unavailable, F1 is used.
+
+The best checkpoint is selected from this score.
+
+## Training Console Output
+
+Each epoch prints output similar to:
+
+```text
+Epoch 033 train_loss=0.2997 val_loss=0.6581 val_f1=0.5028 val_AP=0.4891
+```
+
+The output includes:
+
+- Epoch
+- Training loss
+- Validation loss
+- Validation F1
+- Validation average precision
+
+## Best Model Checkpoint
+
+Whenever validation performance improves sufficiently, the script saves:
+
+```text
+best_model.pt
+```
+
+The checkpoint contains:
+
+```text
+state_dict
+means
+stds
+base_channels
+epoch
+script_version
+```
+
+## Early Stopping
+
+Early stopping is enabled by default.
+
+The default is:
+
+```text
+--patience 10
+```
+
+If validation performance fails to improve for ten consecutive epochs, training stops.
+
+Setting:
+
+```text
+--patience 0
+```
+
+disables early stopping and allows all requested epochs to run.
+
+The default maximum is:
+
+```text
+60 epochs
+```
+
+## Training History
+
+After training, the script writes:
+
+```text
+training_history.csv
+```
+
+with:
+
+- Epoch
+- Training loss
+- Validation loss
+- Validation F1
+- Validation average precision
+- Validation ROC AUC
+- Learning rate
+
+The best checkpoint is then reloaded for test evaluation.
+
+## Test Evaluation
+
+The held-out test split is evaluated using only confident pseudo-label pixels.
+
+The model produces one probability for each valid test pixel.
+
+The final test metrics use:
+
+```text
+threshold = 0.5
+```
+
+Unlike several classification workflows, this script does **not** search for an F1-maximizing validation threshold before test evaluation.
+
+## `metrics.json`
+
+The final report contains:
+
+```text
+script_version
+supervision
+warning
+device
+best_model_epoch
+train_n
+validation_n
+test_n
+test_confident_pixel_metrics
+```
+
+The supervision field is:
+
+```text
+partial_high_confidence_pseudolabels
+```
+
+The warning states:
+
+```text
+Evaluation is against pseudo-label pixels, not human field masks.
+```
+
+The reported metrics therefore quantify how well the model reproduces the held-out confident pseudo-labels.
+
+They do not establish segmentation accuracy against manually delineated agave fields.
+
+## `predict`
+
+The prediction command applies the trained partial U-Net to imagery.
+
+A basic run is:
+
+```bash
+python agave_unet_partial.py predict ^
+    --model "partial_unet_run\best_model.pt" ^
+    --manifest "agave_cnn_manifest.csv" ^
+    --output-dir "partial_unet_predictions"
+```
+
+## Prediction Preprocessing
+
+For each image, the script:
+
+1. Reads all nine Sentinel-2 bands.
+2. Reads the raster validity mask.
+3. Sets invalid pixels to non-finite values.
+4. Fills them with the saved training-band means.
+5. Applies the saved normalization.
+6. Runs the U-Net.
+7. Converts logits into pixel probabilities using sigmoid.
+
+## Probability Raster
+
+Each input image produces:
+
+```text
+{image_stem}_partial_unet_probability.tif
+```
+
+For example:
+
+```text
+INT_0042_2023_sentinel2_dry_median_64_snapped_partial_unet_probability.tif
+```
+
+The output is:
+
+```text
+single-band
+float32
+DEFLATE compressed
+```
+
+and preserves the original image's geospatial profile.
+
+## Binary Prediction Mask
+
+Each probability raster is also thresholded.
+
+The output is:
+
+```text
+{image_stem}_partial_unet_mask.tif
+```
+
+The default threshold is:
+
+```text
+0.5
+```
+
+controlled by:
+
+```text
+--threshold
+```
+
+Pixels satisfying:
+
+```text
+probability >= threshold
+```
+
+become:
+
+```text
+1
+```
+
+and other pixels become:
+
+```text
+0
+```
+
+The binary output uses:
+
+```text
+uint8
+nodata = 255
+```
+
+## Prediction Summary
+
+The prediction stage writes:
+
+```text
+prediction_summary.csv
+```
+
+For every input image, it records:
+
+```text
+image_path
+base_id
+year
+target
+mean_probability
+fraction_pixels_positive
+probability_raster
+mask_raster
+```
+
+
+
+## Mean Probability
+
+The field:
+
+```text
+mean_probability
+```
+
+is the average predicted agave probability across the entire 64 × 64 output.
+
+It can provide a rough patch-level summary of the segmentation response.
+
+## Fraction of Positive Pixels
+
+The field:
+
+```text
+fraction_pixels_positive
+```
+
+records the proportion of pixels satisfying:
+
+```text
+probability >= prediction threshold
+```
+
+For example:
+
+```text
+fraction_pixels_positive = 0.18
+```
+
+means 18% of the patch was classified as agave.
+
+## Complete Workflow Relationship
+
+This partial U-Net is designed to follow the weak U-Net.
+
+The intended chain is:
+
+```text
+Original patch labels
+        ↓
+Weakly supervised U-Net
+        ↓
+weak_unet_probability.tif
+        ↓
+build-pseudolabels
+        ↓
+partial_mask.tif
+        ↓
+Partial U-Net training
+        ↓
+partial_unet_probability.tif
+        ↓
+partial_unet_mask.tif
+```
+
+## Weak U-Net vs. Partial U-Net
+
+### Weak U-Net
+
+Training target:
+
+```text
+one patch label
+```
+
+Pixel supervision:
+
+```text
+none
+```
+
+Loss:
+
+```text
+MIL-style patch loss
++ negative pixel regularization
++ smoothness
++ sparsity
+```
+
+### Partial U-Net
+
+Training target:
+
+```text
+selected pixel pseudo-labels
+```
+
+Pixel supervision:
+
+```text
+0, 1, or ignore
+```
+
+Loss:
+
+```text
+masked BCE
++
+masked Dice
+```
+
+The second stage therefore turns the weak U-Net's localized predictions into a more conventional segmentation-training problem.
+
+## Running the Workflow
+
+### 1. Complete Weak U-Net Prediction
+
+The probability directory should contain files such as:
+
+```text
+*_weak_unet_probability.tif
+```
+
+### 2. Confirm the Source Manifest
+
+The manifest used for pseudo-label construction must contain enough information to produce:
+
+```text
+image_path
+target
+base_id
+year
+```
+
+For later training, it must also carry the original:
+
+```text
+split
+```
+
+assignments.
+
+### 3. Build Partial Pseudo-Labels
+
+```bash
+python agave_unet_partial.py build-pseudolabels ^
+    --manifest "weak_unet_manifest_with_splits.csv" ^
+    --probability-dir "weak_unet_predictions" ^
+    --output-dir "partial_pseudolabels"
+```
+
+### 4. Review the Pseudo-Label Report
+
+Inspect:
+
+```text
+partial_unet_manifest.report.json
+```
+
+Pay particular attention to:
+
+- `masks_created`
+- `missing_probability_rasters`
+- `positive_threshold`
+- `negative_threshold`
+- `mean_fraction_confident`
+- `mean_fraction_positive`
+- `median_fraction_positive`
+
+### 5. Inspect the Partial Manifest
+
+Review:
+
+```text
+partial_unet_manifest.csv
+```
+
+especially:
+
+```text
+confident_pixels
+confident_positive_pixels
+confident_negative_pixels
+ignored_pixels
+fraction_confident
+fraction_positive
+```
+
+### 6. Train the Partial U-Net
+
+```bash
+python agave_unet_partial.py train ^
+    --manifest "partial_pseudolabels\partial_unet_manifest.csv" ^
+    --output-dir "partial_unet_run"
+```
+
+### 7. Review Training Outputs
+
+Inspect:
+
+```text
+best_model.pt
+normalization.json
+training_history.csv
+train_manifest.csv
+validation_manifest.csv
+test_manifest.csv
+metrics.json
+```
+
+### 8. Generate Final Predictions
+
+```bash
+python agave_unet_partial.py predict ^
+    --model "partial_unet_run\best_model.pt" ^
+    --manifest "agave_cnn_manifest.csv" ^
+    --output-dir "partial_unet_predictions"
+```
+
+### 9. Review Prediction Outputs
+
+Inspect:
+
+```text
+*_partial_unet_probability.tif
+*_partial_unet_mask.tif
+prediction_summary.csv
+```
+
+## Conservative Pseudo-Label Example
+
+To require stronger confidence:
+
+```bash
+python agave_unet_partial.py build-pseudolabels ^
+    --manifest "weak_unet_manifest_with_splits.csv" ^
+    --probability-dir "weak_unet_predictions" ^
+    --output-dir "partial_pseudolabels_strict" ^
+    --positive-threshold 0.90 ^
+    --negative-threshold 0.05
+```
+
+This creates fewer confident pixels but requires stronger weak-model certainty.
+
+## Less Conservative Pseudo-Label Example
+
+A wider labeled region could use:
+
+```bash
+python agave_unet_partial.py build-pseudolabels ^
+    --manifest "weak_unet_manifest_with_splits.csv" ^
+    --probability-dir "weak_unet_predictions" ^
+    --output-dir "partial_pseudolabels_relaxed" ^
+    --positive-threshold 0.70 ^
+    --negative-threshold 0.20
+```
+
+This increases pseudo-label coverage but also increases the risk of incorporating weak-model errors.
+
+## Full-Epoch Training Example
+
+To disable early stopping:
+
+```bash
+python agave_unet_partial.py train ^
+    --manifest "partial_pseudolabels\partial_unet_manifest.csv" ^
+    --output-dir "partial_unet_full_epochs" ^
+    --epochs 60 ^
+    --patience 0
+```
+
+## Balanced-Sampling Example
+
+```bash
+python agave_unet_partial.py train ^
+    --manifest "partial_pseudolabels\partial_unet_manifest.csv" ^
+    --output-dir "partial_unet_balanced" ^
+    --balanced-sampler
+```
+
+## Alternate Prediction Threshold
+
+```bash
+python agave_unet_partial.py predict ^
+    --model "partial_unet_run\best_model.pt" ^
+    --manifest "agave_cnn_manifest.csv" ^
+    --output-dir "partial_unet_predictions_t070" ^
+    --threshold 0.70
+```
+
+This changes only the final binary-mask threshold.
+
+It does not retrain the model.
+
+## Important Configuration Options
+
+### Pseudo-Label Construction
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `--manifest` | Required | Patch manifest containing image and class information |
+| `--probability-dir` | Required | Weak U-Net probability raster directory |
+| `--output-dir` | Required | Destination for partial masks and manifest |
+| `--positive-threshold` | `0.80` | Minimum probability for confident agave pixels |
+| `--negative-threshold` | `0.10` | Maximum probability for confident non-agave pixels |
+
+### Training
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `--manifest` | Required | Partial pseudo-label manifest |
+| `--output-dir` | Required | Model-run directory |
+| `--epochs` | `60` | Maximum training epochs |
+| `--batch-size` | `16` | Image-mask pairs per batch |
+| `--workers` | `0` | DataLoader worker processes |
+| `--seed` | `42` | Reproducibility seed |
+| `--learning-rate` | `0.001` | AdamW learning rate |
+| `--weight-decay` | `0.0001` | AdamW regularization |
+| `--base-channels` | `32` | Initial U-Net feature width |
+| `--normalization-images` | `2000` | Maximum training images used for normalization |
+| `--balanced-sampler` | Off | Enables inverse-frequency patch sampling |
+| `--patience` | `10` | Early-stopping patience; `0` disables it |
+| `--device` | Automatic | PyTorch device override |
+
+### Prediction
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `--model` | Required | Trained partial U-Net checkpoint |
+| `--manifest` | Required | Imagery to predict |
+| `--output-dir` | Required | Probability and mask destination |
+| `--threshold` | `0.5` | Binary output threshold |
+| `--device` | Automatic | PyTorch device override |
+
+These options are defined directly in the command-line parser.
+
+## Reproducibility
+
+The default random seed is:
+
+```text
+42
+```
+
+The script seeds:
+
+- Python `random`
+- NumPy
+- PyTorch
+- PyTorch CUDA when available
+
+The same seed is used when sampling training images for normalization.
+
+## PyTorch Checkpoint Loading
+
+Checkpoints are loaded using:
+
+```python
+weights_only=False
+```
+
+because the saved checkpoint contains metadata in addition to the model weights.
+
+The checkpoint should therefore come from a trusted source.
+
+## Important Experimental Limitation
+
+This workflow may improve the spatial consistency of weak predictions, but it is still fundamentally trained from labels derived from:
+
+```text
+weak U-Net output
+```
+
+rather than:
+
+```text
+human segmentation masks
+```
+
+A high test score can therefore mean:
+
+```text
+the partial U-Net reproduces confident weak-model pseudo-labels well
+```
+
+It does **not necessarily mean**:
+
+```text
+the partial U-Net accurately delineates real agave fields
+```
+
+That distinction is especially important because the same pseudo-labeling process influences both training supervision and test evaluation.
+
+## Recommendations
+
+- Run the weak U-Net and generate its probability GeoTIFFs before starting this workflow.
+- Preserve the original train/validation/test split from the weak U-Net experiment.
+- Do not create a new split after pseudo-label generation.
+- Keep `base_id` spatial groups independent across training and evaluation.
+- Review `missing_probability_rasters` before training.
+- Inspect the distribution of `fraction_confident` across positive patches.
+- Inspect `fraction_positive` for evidence of implausibly broad pseudo-label regions.
+- Treat positive and negative thresholds as experimental hyperparameters.
+- Keep threshold experiments in separate output directories.
+- Prefer conservative thresholds when the weak probability maps are noisy.
+- Remember that stronger thresholds reduce pseudo-label coverage.
+- Remember that relaxed thresholds increase the risk of self-reinforcing weak-model errors.
+- Preserve the `255` ignore class rather than forcing uncertain pixels into 0 or 1.
+- Do not include ignored pixels in segmentation evaluation.
+- Preserve the exact pseudo-label manifest used for each model run.
+- Use the same geographic partitions when comparing weak and partial U-Net performance.
+- Report the number of confident test pixels alongside segmentation metrics.
+- Report the number of positive confident pixels because class imbalance may be substantial.
+- Do not interpret confident-pixel accuracy as full-image segmentation accuracy.
+- Do not interpret evaluation against pseudo-labels as evaluation against ground truth.
+- Visually inspect probability rasters and masks alongside quantitative metrics.
+- Compare partial U-Net outputs with the original weak U-Net probability maps to determine whether the second stage actually produces cleaner localization.
+- Check negative patches for new false-positive regions introduced during partial U-Net training.
+- Review positive patches for over-expansion beyond the high-confidence seed regions.
+- Preserve `best_model.pt`, `normalization.json`, `training_history.csv`, and `metrics.json` with every run.
+- Keep the pseudo-label-generation report with the trained model because its confidence thresholds define the supervision used.
+- Use human field masks for final segmentation validation whenever they become available.
+- Treat this workflow as a pseudo-label refinement experiment rather than a substitute for independently labeled segmentation ground truth.
+
+## Current Workflow Summary
+
+In sequence, the script:
+
+1. Loads the original patch-level manifest.
+2. Converts recognized label formats into binary targets.
+3. Requires `image_path`, `base_id`, and `year`.
+4. Removes observations without binary targets.
+5. Searches the weak-U-Net probability directory for a matching raster.
+6. Accepts both `_weak_unet_probability.tif` and `_probability.tif` naming patterns.
+7. Skips observations without a matching probability raster.
+8. Reads the original Sentinel-2 image validity mask.
+9. Reads the weak-U-Net pixel probability raster.
+10. Confirms the probability raster dimensions match the source image.
+11. Initializes every pseudo-label pixel as `255`.
+12. Assigns every valid pixel in known non-agave patches to `0`.
+13. Applies the configured negative probability threshold inside positive patches.
+14. Converts high-confidence negative pixels to `0`.
+15. Applies the configured positive probability threshold.
+16. Converts high-confidence positive pixels to `1`.
+17. Leaves intermediate-probability pixels as `255`.
+18. Writes the partial mask using the original image geospatial profile.
+19. Counts all confident pixels.
+20. Counts confident positive pixels.
+21. Counts confident negative pixels.
+22. Counts ignored pixels.
+23. Calculates the confident-pixel fraction.
+24. Calculates the positive-pixel fraction.
+25. Writes `partial_unet_manifest.csv`.
+26. Counts missing weak probability rasters.
+27. Summarizes positive-patch pseudo-label coverage.
+28. Summarizes negative-patch coverage.
+29. Writes `partial_unet_manifest.report.json`.
+30. Loads the partial pseudo-label manifest for training.
+31. Requires image, mask, target, location, year, and split fields.
+32. Reuses the existing train/validation/test partition.
+33. Normalizes `val` to `validation` when necessary.
+34. Verifies that all three partitions contain observations.
+35. Checks for `base_id` leakage.
+36. Saves the exact training manifest.
+37. Saves the exact validation manifest.
+38. Saves the exact test manifest.
+39. Samples training images for spectral normalization.
+40. Calculates nine-band means and standard deviations.
+41. Saves normalization statistics.
+42. Loads each Sentinel-2 image and partial mask together.
+43. Replaces invalid raster values with training-band means.
+44. Standardizes all nine spectral bands.
+45. Applies matched image-mask flips during training.
+46. Applies matched image-mask rotations during training.
+47. Optionally constructs an inverse-frequency patch sampler.
+48. Initializes the 9-band U-Net.
+49. Encodes each image through four convolutional stages.
+50. Processes the representation through the bottleneck.
+51. Reconstructs spatial features through the decoder.
+52. Combines encoder and decoder features using skip connections.
+53. Produces one pixel logit per image pixel.
+54. Identifies all pseudo-label pixels not equal to `255`.
+55. Excludes ignored pixels from binary cross-entropy.
+56. Excludes ignored pixels from Dice calculation.
+57. Calculates masked BCE.
+58. Calculates masked Dice loss.
+59. Adds the two losses together.
+60. Optimizes the U-Net using AdamW.
+61. Evaluates validation probabilities only at confident pseudo-label pixels.
+62. Calculates confident-pixel validation accuracy.
+63. Calculates balanced accuracy.
+64. Calculates precision.
+65. Calculates recall.
+66. Calculates F1.
+67. Calculates ROC AUC when both classes exist.
+68. Calculates average precision when both classes exist.
+69. Uses average precision as the preferred validation score.
+70. Falls back to F1 when average precision is unavailable.
+71. Updates the plateau scheduler from validation performance.
+72. Saves `best_model.pt` whenever performance improves.
+73. Stops early when configured patience is reached.
+74. Writes `training_history.csv`.
+75. Reloads the best model checkpoint.
+76. Evaluates the held-out test split only on confident pseudo-label pixels.
+77. Uses a fixed threshold of `0.5` for final test metrics.
+78. Records the pseudo-label supervision source.
+79. Records the warning that evaluation is not against human field masks.
+80. Writes `metrics.json`.
+81. Loads a trained partial U-Net for prediction.
+82. Restores training-band means and standard deviations.
+83. Loads each prediction image.
+84. Replaces invalid values with training means.
+85. Standardizes the nine spectral bands.
+86. Generates a complete 64 × 64 probability map.
+87. Writes the probability map as a float32 GeoTIFF.
+88. Applies the selected prediction threshold.
+89. Creates a binary uint8 mask.
+90. Writes the predicted mask as a GeoTIFF.
+91. Calculates mean probability for each patch.
+92. Calculates the fraction of pixels predicted as agave.
+93. Records the output raster paths.
+94. Writes `prediction_summary.csv`.
+
+This workflow converts the weak U-Net's uncertain pixel predictions into conservative high-confidence supervision and then trains a conventional segmentation network while ignoring ambiguous pixels. It provides a structured pseudo-label refinement stage between patch-level weak supervision and eventual fully supervised agave segmentation, while preserving the critical limitation that the model is still trained and evaluated against machine-generated pseudo-labels rather than independently verified field masks.
